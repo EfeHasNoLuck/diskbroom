@@ -1,0 +1,51 @@
+{
+  "name": "devsweep",
+  "version": "0.1.0",
+  "description": "Find and reclaim gigabytes of regenerable build junk (node_modules, .venv, target, caches…) across all your projects — safely, on any OS.",
+  "type": "module",
+  "bin": {
+    "devsweep": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "cli",
+    "disk",
+    "cleanup",
+    "node_modules",
+    "cache",
+    "disk-space",
+    "developer-tools",
+    "reclaim",
+    "housekeeping",
+    "monorepo"
+  ],
+  "author": "Efe Saygılı <efesaygili.c@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EfeHasNoLuck/devsweep.git"
+  },
+  "bugs": {
+    "url": "https://github.com/EfeHasNoLuck/devsweep/issues"
+  },
+  "homepage": "https://github.com/EfeHasNoLuck/devsweep#readme",
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
