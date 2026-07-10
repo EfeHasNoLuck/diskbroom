@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scan, type Finding } from "./scanner.js";
@@ -41,6 +42,19 @@ async function main(): Promise<void> {
 
   const root = resolve(positionals[0] ?? ".");
 
+  try {
+    const rootStat = await stat(root);
+    if (!rootStat.isDirectory()) {
+      console.error(c.red(`Error: not a directory: ${root}`));
+      process.exitCode = 1;
+      return;
+    }
+  } catch {
+    console.error(c.red(`Error: path does not exist: ${root}`));
+    process.exitCode = 1;
+    return;
+  }
+
   const maxDepth = values.depth === undefined ? undefined : Number.parseInt(values.depth, 10);
   if (maxDepth !== undefined && (!Number.isFinite(maxDepth) || maxDepth < 0)) {
     console.error(c.red("Error: --depth must be a non-negative number."));
@@ -49,6 +63,11 @@ async function main(): Promise<void> {
   }
 
   const top = values.top === undefined ? undefined : Number.parseInt(values.top, 10);
+  if (top !== undefined && (!Number.isFinite(top) || top < 1)) {
+    console.error(c.red("Error: --top must be a positive number."));
+    process.exitCode = 1;
+    return;
+  }
 
   const isTty = Boolean(process.stdout.isTTY);
   const showProgress = isTty && !values.json;
