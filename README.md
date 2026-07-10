@@ -1,18 +1,18 @@
-# devsweep
+# diskbroom
 
 > Find and reclaim the gigabytes of regenerable build junk rotting across all your projects — safely, on any OS.
 
-[![npm](https://img.shields.io/npm/v/devsweep.svg)](https://www.npmjs.com/package/devsweep)
+[![npm](https://img.shields.io/npm/v/diskbroom.svg)](https://www.npmjs.com/package/diskbroom)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
 Every developer's disk is quietly bleeding space to `node_modules`, `.venv`,
 `target/`, `.gradle`, and a dozen build caches — all of it perfectly
-regenerable with a single command. **devsweep** walks your projects, adds it
+regenerable with a single command. **diskbroom** walks your projects, adds it
 all up, and shows you exactly where the space went.
 
 ```
-$ npx devsweep ~/code
+$ npx diskbroom ~/code
 
      SIZE   ECOSYSTEM     CONFIDENCE  PATH
    1.8 GB   JavaScript    high        acme-dashboard/node_modules
@@ -27,12 +27,12 @@ $ npx devsweep ~/code
   3.6 GB reclaimable across 5 high-confidence folders
   41 MB more in 1 medium-confidence folder — review before removing
 
-  scanned in 2.3s · devsweep only reports today; it never deletes anything.
+  scanned in 2.3s · diskbroom only reports today; it never deletes anything.
 ```
 
 ## Why another cleaner?
 
-Most tools only know about `node_modules` and lean Unix-only. devsweep is:
+Most tools only know about `node_modules` and lean Unix-only. diskbroom is:
 
 - **Cross-ecosystem** — JavaScript, Python, Rust, Java/Gradle, .NET, Terraform, and more in one pass.
 - **First-class on Windows** — built and tested on Windows, macOS, and Linux.
@@ -45,19 +45,19 @@ Most tools only know about `node_modules` and lean Unix-only. devsweep is:
 Run it once without installing:
 
 ```bash
-npx devsweep
+npx diskbroom
 ```
 
 Or install globally:
 
 ```bash
-npm install -g devsweep
+npm install -g diskbroom
 ```
 
 ## Usage
 
 ```bash
-devsweep [path] [options]
+diskbroom [path] [options]
 ```
 
 | Option | Description |
@@ -72,9 +72,9 @@ devsweep [path] [options]
 ### Examples
 
 ```bash
-devsweep                     # scan the current folder
-devsweep ~/code --top 20     # 20 biggest artifacts under ~/code
-devsweep . --json            # JSON output for scripts or CI
+diskbroom                     # scan the current folder
+diskbroom ~/code --top 20     # 20 biggest artifacts under ~/code
+diskbroom . --json            # JSON output for scripts or CI
 ```
 
 ## What it detects
@@ -89,12 +89,12 @@ devsweep . --json            # JSON output for scripts or CI
 | Build output | `dist`, `build` (next to a project manifest) |
 | Terraform | `.terraform` |
 
-Missing something? [Open an issue](https://github.com/EfeHasNoLuck/devsweep/issues) — the catalogue is easy to extend in [`src/patterns.ts`](./src/patterns.ts).
+Missing something? [Open an issue](https://github.com/EfeHasNoLuck/diskbroom/issues) — the catalogue is easy to extend in [`src/patterns.ts`](./src/patterns.ts).
 
 ## Confidence levels
 
 - **high** — the folder is unambiguous and always regenerable. Counted in the headline total.
-- **medium** — the folder *name* could theoretically hold source, so devsweep only flags it when a project marker is present, and reports it separately for you to review.
+- **medium** — the folder *name* could theoretically hold source, so diskbroom only flags it when a project marker is present, and reports it separately for you to review.
 
 ## Roadmap
 
@@ -109,8 +109,8 @@ Issues and PRs are very welcome — especially new ecosystem rules. See
 [`src/patterns.ts`](./src/patterns.ts) for how detection works.
 
 ```bash
-git clone https://github.com/EfeHasNoLuck/devsweep
-cd devsweep
+git clone https://github.com/EfeHasNoLuck/diskbroom
+cd diskbroom
 npm install
 npm test
 npm run build

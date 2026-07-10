@@ -1,10 +1,10 @@
 {
-  "name": "devsweep",
+  "name": "diskbroom",
   "version": "0.1.0",
   "description": "Find and reclaim gigabytes of regenerable build junk (node_modules, .venv, target, caches…) across all your projects — safely, on any OS.",
   "type": "module",
   "bin": {
-    "devsweep": "dist/cli.js"
+    "diskbroom": "dist/cli.js"
   },
   "files": [
     "dist"
@@ -35,12 +35,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/EfeHasNoLuck/devsweep.git"
+    "url": "git+https://github.com/EfeHasNoLuck/diskbroom.git"
   },
   "bugs": {
-    "url": "https://github.com/EfeHasNoLuck/devsweep/issues"
+    "url": "https://github.com/EfeHasNoLuck/diskbroom/issues"
   },
-  "homepage": "https://github.com/EfeHasNoLuck/devsweep#readme",
+  "homepage": "https://github.com/EfeHasNoLuck/diskbroom#readme",
   "devDependencies": {
     "@types/node": "^26.1.1",
     "tsup": "^8.5.1",

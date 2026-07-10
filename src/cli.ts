@@ -24,7 +24,7 @@ async function main(): Promise<void> {
     });
   } catch (err) {
     console.error(c.red(`Error: ${(err as Error).message}`));
-    console.error(`Run ${c.cyan("devsweep --help")} for usage.`);
+    console.error(`Run ${c.cyan("diskbroom --help")} for usage.`);
     process.exitCode = 1;
     return;
   }
@@ -127,7 +127,7 @@ function renderReport(findings: Finding[], root: string, elapsed: number, top: n
     );
   }
   console.log();
-  console.log(c.gray(`  scanned in ${seconds}s · devsweep only reports today; it never deletes anything.`));
+  console.log(c.gray(`  scanned in ${seconds}s · diskbroom only reports today; it never deletes anything.`));
 }
 
 function ecosystemBreakdown(findings: Finding[]): string {
@@ -169,10 +169,10 @@ function clearLine(): void {
 
 function printHelp(): void {
   console.log(`
-${c.bold("devsweep")} ${c.gray(`v${VERSION}`)} — find reclaimable build junk across your projects
+${c.bold("diskbroom")} ${c.gray(`v${VERSION}`)} — find reclaimable build junk across your projects
 
 ${c.bold("USAGE")}
-  devsweep [path] [options]
+  diskbroom [path] [options]
 
 ${c.bold("ARGUMENTS")}
   path             Directory to scan (default: current directory)
@@ -185,11 +185,11 @@ ${c.bold("OPTIONS")}
   -v, --version    Show version
 
 ${c.bold("EXAMPLES")}
-  ${c.cyan("devsweep")}                    ${c.gray("# scan the current folder")}
-  ${c.cyan("devsweep ~/code --top 20")}    ${c.gray("# 20 biggest artifacts under ~/code")}
-  ${c.cyan("devsweep . --json")}           ${c.gray("# JSON output for scripts/CI")}
+  ${c.cyan("diskbroom")}                    ${c.gray("# scan the current folder")}
+  ${c.cyan("diskbroom ~/code --top 20")}    ${c.gray("# 20 biggest artifacts under ~/code")}
+  ${c.cyan("diskbroom . --json")}           ${c.gray("# JSON output for scripts/CI")}
 
-${c.gray("devsweep only reports today — it never deletes anything.")}
+${c.gray("diskbroom only reports today — it never deletes anything.")}
 `);
 }
 

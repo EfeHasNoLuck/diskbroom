@@ -7,7 +7,7 @@ import { scan, dirSize } from "../src/scanner.js";
 let root: string;
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), "devsweep-test-"));
+  root = await mkdtemp(join(tmpdir(), "diskbroom-test-"));
 
   // A JS project with node_modules.
   await mkdir(join(root, "webapp", "node_modules", "left-pad"), { recursive: true });
