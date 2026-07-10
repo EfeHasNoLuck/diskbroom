@@ -11,24 +11,9 @@ Every developer's disk is quietly bleeding space to `node_modules`, `.venv`,
 regenerable with a single command. **diskbroom** walks your projects, adds it
 all up, and shows you exactly where the space went.
 
-```
-$ npx diskbroom ~/code
-
-     SIZE   ECOSYSTEM     CONFIDENCE  PATH
-   1.8 GB   JavaScript    high        acme-dashboard/node_modules
-   940 MB   Rust          high        parser/target
-   612 MB   JavaScript    high        old-blog/node_modules
-   210 MB   Python        high        ml-notebook/.venv
-    88 MB   Gradle        high        android-app/.gradle
-    41 MB   Build output  medium      docs-site/dist
-
-  by ecosystem:  JavaScript 3.4 GB  ·  Rust 940 MB  ·  Python 210 MB  ·  Gradle 88 MB
-
-  3.6 GB reclaimable across 5 high-confidence folders
-  41 MB more in 1 medium-confidence folder — review before removing
-
-  scanned in 2.3s · diskbroom only reports today; it never deletes anything.
-```
+<p align="center">
+  <img src="https://raw.githubusercontent.com/EfeHasNoLuck/diskbroom/main/.github/demo.svg" alt="diskbroom scanning ~/code and reporting 3.6 GB of reclaimable build artifacts across JavaScript, Rust, Python and Gradle projects" width="760">
+</p>
 
 ## Why another cleaner?
 

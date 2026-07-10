@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 430" font-family="Cascadia Mono, Cascadia Code, Consolas, Menlo, monospace" font-size="14">
+  <!-- window -->
+  <rect x="0.5" y="0.5" width="759" height="429" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <!-- title bar -->
+  <path d="M0.5 10.5 a10 10 0 0 1 10-10 h739 a10 10 0 0 1 10 10 v27 h-759 z" fill="#161b22"/>
+  <line x1="0.5" y1="37.5" x2="759.5" y2="37.5" stroke="#30363d"/>
+  <circle cx="22" cy="19" r="6" fill="#ff5f56"/>
+  <circle cx="42" cy="19" r="6" fill="#ffbd2e"/>
+  <circle cx="62" cy="19" r="6" fill="#27c93f"/>
+  <text x="380" y="24" text-anchor="middle" fill="#8b949e" font-size="12">diskbroom — terminal</text>
+
+  <!-- terminal body -->
+  <g xml:space="preserve" fill="#e6edf3">
+    <text x="28" y="70"><tspan fill="#8b949e">$ </tspan><tspan>npx diskbroom ~/code</tspan></text>
+
+    <text x="28" y="114" fill="#8b949e">     SIZE   ECOSYSTEM     CONFIDENCE  PATH</text>
+    <text x="28" y="136"><tspan fill="#ff7b72" font-weight="bold">   1.8 GB</tspan><tspan>   JavaScript    </tspan><tspan fill="#3fb950">high</tspan><tspan>        acme-dashboard/node_modules</tspan></text>
+    <text x="28" y="158"><tspan fill="#d29922">   940 MB</tspan><tspan>   Rust          </tspan><tspan fill="#3fb950">high</tspan><tspan>        parser/target</tspan></text>
+    <text x="28" y="180"><tspan fill="#d29922">   612 MB</tspan><tspan>   JavaScript    </tspan><tspan fill="#3fb950">high</tspan><tspan>        old-blog/node_modules</tspan></text>
+    <text x="28" y="202"><tspan fill="#d29922">   210 MB</tspan><tspan>   Python        </tspan><tspan fill="#3fb950">high</tspan><tspan>        ml-notebook/.venv</tspan></text>
+    <text x="28" y="224"><tspan fill="#8b949e">    88 MB</tspan><tspan>   Gradle        </tspan><tspan fill="#3fb950">high</tspan><tspan>        android-app/.gradle</tspan></text>
+    <text x="28" y="246"><tspan fill="#8b949e">    41 MB</tspan><tspan>   Build output  </tspan><tspan fill="#d29922">medium</tspan><tspan>      docs-site/dist</tspan></text>
+
+    <text x="28" y="290"><tspan fill="#8b949e">  by ecosystem:  </tspan><tspan>JavaScript </tspan><tspan font-weight="bold">3.4 GB</tspan><tspan fill="#8b949e">  ·  </tspan><tspan>Rust </tspan><tspan font-weight="bold">940 MB</tspan><tspan fill="#8b949e">  ·  </tspan><tspan>Python </tspan><tspan font-weight="bold">210 MB</tspan><tspan fill="#8b949e">  ·  </tspan><tspan>Gradle </tspan><tspan font-weight="bold">88 MB</tspan></text>
+
+    <text x="28" y="334"><tspan>  </tspan><tspan font-weight="bold">3.6 GB</tspan><tspan> </tspan><tspan fill="#3fb950">reclaimable</tspan><tspan fill="#8b949e"> across 5 high-confidence folders</tspan></text>
+    <text x="28" y="356"><tspan>  </tspan><tspan font-weight="bold">41 MB</tspan><tspan> </tspan><tspan fill="#d29922">more</tspan><tspan fill="#8b949e"> in 1 medium-confidence folder — review before removing</tspan></text>
+
+    <text x="28" y="400" fill="#8b949e">  scanned in 2.3s · diskbroom only reports today; it never deletes anything.</text>
+  </g>
+</svg>
