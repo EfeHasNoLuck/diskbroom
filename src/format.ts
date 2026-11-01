@@ -1,5 +1,7 @@
 // Tiny, dependency-free ANSI colouring + table helpers.
 
+import { relative } from "node:path";
+
 const useColor =
   Boolean(process.stdout.isTTY) &&
   !process.env.NO_COLOR &&
@@ -76,4 +78,15 @@ export function table(headers: string[], rows: string[][], aligns: Align[] = [])
   const lines = [renderRow(headers.map((h) => c.gray(h)))];
   for (const row of rows) lines.push(renderRow(row));
   return lines.join("\n");
+}
+
+/** "1 folder" / "3 folders". */
+export function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** Show `path` relative to the scan root, falling back to the full path. */
+export function prettyPath(path: string, root: string): string {
+  const rel = relative(root, path);
+  return rel === "" ? path : rel;
 }

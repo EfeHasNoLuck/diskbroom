@@ -23,6 +23,15 @@ export interface ArtifactRule {
   requiresInner?: string;
 }
 
+/** Files that mark a JavaScript/TypeScript project root. */
+const JS_PROJECT = ["package.json", "deno.json", "deno.jsonc"];
+
+/**
+ * Files that mark a Gradle build. Without one, a `.gradle` folder is the Gradle
+ * *user home* (`~/.gradle`: settings, credentials, init scripts), not a cache.
+ */
+const GRADLE_PROJECT = ["settings.gradle", "settings.gradle.kts", "build.gradle", "build.gradle.kts", "gradlew", "gradlew.bat"];
+
 /**
  * The known-artifact catalogue. Kept deliberately conservative: anything whose
  * name might contain real source code is "medium" and gated behind a sibling
@@ -30,14 +39,16 @@ export interface ArtifactRule {
  */
 export const RULES: ArtifactRule[] = [
   // ── JavaScript / TypeScript ───────────────────────────────────────────────
-  { name: "node_modules", ecosystem: "JavaScript", confidence: "high", regenerate: "npm install" },
+  // A manifest is required: Node's global install (`<prefix>/lib/node_modules`,
+  // home of npm itself) has none, and `npm install` can't bring it back.
+  { name: "node_modules", ecosystem: "JavaScript", confidence: "high", regenerate: "npm install", requiresSibling: JS_PROJECT },
   { name: ".next", ecosystem: "JavaScript", confidence: "high", regenerate: "next build" },
   { name: ".nuxt", ecosystem: "JavaScript", confidence: "high", regenerate: "nuxt build" },
   { name: ".svelte-kit", ecosystem: "JavaScript", confidence: "high", regenerate: "vite build" },
   { name: ".turbo", ecosystem: "JavaScript", confidence: "high" },
   { name: ".parcel-cache", ecosystem: "JavaScript", confidence: "high" },
   { name: ".angular", ecosystem: "JavaScript", confidence: "high" },
-  { name: "coverage", ecosystem: "JavaScript", confidence: "medium", regenerate: "re-run tests" },
+  { name: "coverage", ecosystem: "JavaScript", confidence: "medium", regenerate: "re-run tests", requiresSibling: JS_PROJECT },
 
   // ── Python ────────────────────────────────────────────────────────────────
   { name: "__pycache__", ecosystem: "Python", confidence: "high" },
@@ -52,7 +63,7 @@ export const RULES: ArtifactRule[] = [
   { name: "target", ecosystem: "Rust", confidence: "high", requiresSibling: ["Cargo.toml"], regenerate: "cargo build" },
 
   // ── Java / Kotlin / Gradle ────────────────────────────────────────────────
-  { name: ".gradle", ecosystem: "Gradle", confidence: "high" },
+  { name: ".gradle", ecosystem: "Gradle", confidence: "high", requiresSibling: GRADLE_PROJECT },
 
   // ── .NET ──────────────────────────────────────────────────────────────────
   { name: "bin", ecosystem: ".NET", confidence: "medium", requiresSibling: ["*.csproj", "*.fsproj", "*.vbproj", "*.sln"] },

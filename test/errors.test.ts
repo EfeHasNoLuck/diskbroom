@@ -44,6 +44,7 @@ describe("incomplete scans", () => {
     const vanished = join(artifact, "gone.js");
     await mkdir(blocked);
     await mkdir(nested, { recursive: true });
+    await writeFile(join(root, "package.json"), "{}"); // node_modules only counts next to a manifest
     await writeFile(join(artifact, "readable.js"), "12345");
     await writeFile(vanished, "123");
     failures.set(blocked, "EACCES");
