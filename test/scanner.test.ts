@@ -31,7 +31,7 @@ afterAll(async () => {
 
 describe("scan", () => {
   it("finds node_modules and reports a plausible size", async () => {
-    const findings = await scan({ root });
+    const { findings } = await scan({ root });
     const nm = findings.find((f) => f.name === "node_modules");
     expect(nm).toBeDefined();
     expect(nm?.ecosystem).toBe("JavaScript");
@@ -40,20 +40,20 @@ describe("scan", () => {
   });
 
   it("matches Rust `target` only when a Cargo.toml sibling exists", async () => {
-    const findings = await scan({ root });
+    const { findings } = await scan({ root });
     const targets = findings.filter((f) => f.name === "target");
     expect(targets).toHaveLength(1);
     expect(targets[0]?.path).toContain("rustapp");
   });
 
   it("never descends into a matched artifact", async () => {
-    const findings = await scan({ root });
+    const { findings } = await scan({ root });
     const insideNodeModules = findings.some((f) => f.path.includes(join("node_modules", "left-pad")));
     expect(insideNodeModules).toBe(false);
   });
 
   it("sorts findings largest first", async () => {
-    const findings = await scan({ root });
+    const { findings } = await scan({ root });
     for (let i = 1; i < findings.length; i++) {
       expect(findings[i - 1]!.size).toBeGreaterThanOrEqual(findings[i]!.size);
     }
