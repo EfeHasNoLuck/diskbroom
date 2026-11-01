@@ -41,7 +41,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 async function findOne(scanRoot: string, name: string): Promise<Finding> {
-  const finding = (await scan({ root: scanRoot })).find((f) => f.name === name);
+  const finding = (await scan({ root: scanRoot })).findings.find((f) => f.name === name);
   if (!finding) throw new Error(`fixture problem: no ${name} found under ${scanRoot}`);
   return finding;
 }
