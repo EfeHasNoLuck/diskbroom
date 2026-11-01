@@ -51,6 +51,7 @@ diskbroom [path] [options]
 | `--top <n>` | Show only the *n* largest findings |
 | `--depth <n>` | Limit how deep to descend |
 | `--json` | Output machine-readable JSON |
+| `--verbose` | List unreadable paths and their filesystem error codes |
 | `-h, --help` | Show help |
 | `-v, --version` | Show version |
 
@@ -61,6 +62,12 @@ diskbroom                     # scan the current folder
 diskbroom ~/code --top 20     # 20 biggest artifacts under ~/code
 diskbroom . --json            # JSON output for scripts or CI
 ```
+
+If a directory cannot be listed or a file cannot be measured, the scan continues
+and warns that totals may be incomplete. Use `--verbose` for the affected paths
+and error codes (for example, `EACCES` or `ENOENT`). JSON output includes
+`errorCount` and an `errors` array of `{ path, code }` entries alongside `findings`.
+Each affected path is reported once, even if it was checked more than once.
 
 ## What it detects
 

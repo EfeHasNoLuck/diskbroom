@@ -23,6 +23,18 @@ export interface ScanOptions {
   onProgress?: (dirsScanned: number, currentPath: string) => void;
 }
 
+export interface ScanError {
+  path: string;
+  code: string;
+}
+
+export interface ScanResult {
+  findings: Finding[];
+  errors: ScanError[];
+}
+
+type OnError = (path: string, error: unknown) => void;
+
 const RULE_BY_NAME = new Map<string, ArtifactRule>();
 for (const rule of RULES) RULE_BY_NAME.set(rule.name.toLowerCase(), rule);
 
@@ -43,13 +55,18 @@ const SKIP_DIRS = new Set([
 
 /**
  * Walk `root`, returning every regenerable artifact directory it finds. Never
- * follows symlinks, never descends into a matched artifact, and swallows
- * permission errors so one unreadable folder can't abort the whole scan.
+ * follows symlinks or descends into a matched artifact. Records unreadable paths
+ * and continues so one inaccessible folder can't abort the whole scan.
  */
-export async function scan(options: ScanOptions): Promise<Finding[]> {
+export async function scan(options: ScanOptions): Promise<ScanResult> {
   const { root, onProgress } = options;
   const maxDepth = options.maxDepth ?? Number.POSITIVE_INFINITY;
   const findings: Finding[] = [];
+  const errors = new Map<string, ScanError>();
+  const onError: OnError = (path, error) => {
+    const code = (error as NodeJS.ErrnoException)?.code ?? "UNKNOWN";
+    errors.set(path, { path, code });
+  };
   let dirsScanned = 0;
 
   const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
@@ -62,7 +79,8 @@ export async function scan(options: ScanOptions): Promise<Finding[]> {
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      onError(dir, error);
       continue; // permission denied, path vanished, etc.
     }
 
@@ -79,13 +97,13 @@ export async function scan(options: ScanOptions): Promise<Finding[]> {
       const full = join(dir, entry.name);
       const rule = RULE_BY_NAME.get(lower);
 
-      if (rule && (await ruleMatches(rule, siblingNames, full))) {
+      if (rule && (await ruleMatches(rule, siblingNames, full, onError))) {
         findings.push({
           path: full,
           name: entry.name,
           ecosystem: rule.ecosystem,
           confidence: rule.confidence,
-          size: await dirSize(full),
+          size: await dirSize(full, onError),
           regenerate: rule.regenerate,
         });
         continue; // do not descend into a matched artifact
@@ -97,12 +115,12 @@ export async function scan(options: ScanOptions): Promise<Finding[]> {
   }
 
   findings.sort((a, b) => b.size - a.size);
-  return findings;
+  return { findings, errors: [...errors.values()] };
 }
 
-async function ruleMatches(rule: ArtifactRule, siblingNames: string[], full: string): Promise<boolean> {
+async function ruleMatches(rule: ArtifactRule, siblingNames: string[], full: string, onError: OnError): Promise<boolean> {
   if (rule.requiresSibling && !hasSibling(siblingNames, rule.requiresSibling)) return false;
-  if (rule.requiresInner && !(await existsInside(full, rule.requiresInner))) return false;
+  if (rule.requiresInner && !(await existsInside(full, rule.requiresInner, onError))) return false;
   return true;
 }
 
@@ -117,18 +135,19 @@ function hasSibling(siblingNames: string[], patterns: string[]): boolean {
   });
 }
 
-async function existsInside(dir: string, fileName: string): Promise<boolean> {
+async function existsInside(dir: string, fileName: string, onError: OnError): Promise<boolean> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     const target = fileName.toLowerCase();
     return entries.some((entry) => entry.name.toLowerCase() === target);
-  } catch {
+  } catch (error) {
+    onError(dir, error);
     return false;
   }
 }
 
 /** Sum the size of every regular file under `root`, skipping symlinks. */
-export async function dirSize(root: string): Promise<number> {
+export async function dirSize(root: string, onError?: OnError): Promise<number> {
   let total = 0;
   const stack: string[] = [root];
 
@@ -139,7 +158,8 @@ export async function dirSize(root: string): Promise<number> {
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      onError?.(dir, error);
       continue;
     }
 
@@ -150,7 +170,7 @@ export async function dirSize(root: string): Promise<number> {
       if (entry.isDirectory()) stack.push(full);
       else if (entry.isFile()) files.push(full);
     }
-    total += await sumSizes(files);
+    total += await sumSizes(files, onError);
   }
 
   return total;
@@ -161,7 +181,7 @@ export async function dirSize(root: string): Promise<number> {
  * Each worker keeps its OWN subtotal — a shared `total += await …` would race
  * across the await boundary and silently undercount.
  */
-async function sumSizes(files: string[], limit = 64): Promise<number> {
+async function sumSizes(files: string[], onError?: OnError, limit = 64): Promise<number> {
   let index = 0;
 
   const worker = async (): Promise<number> => {
@@ -171,8 +191,8 @@ async function sumSizes(files: string[], limit = 64): Promise<number> {
       if (file === undefined) break;
       try {
         local += (await stat(file)).size;
-      } catch {
-        // ignore an unreadable file
+      } catch (error) {
+        onError?.(file, error);
       }
     }
     return local;

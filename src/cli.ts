@@ -16,6 +16,7 @@ async function main(): Promise<void> {
       allowPositionals: true,
       options: {
         json: { type: "boolean", default: false },
+        verbose: { type: "boolean", default: false },
         depth: { type: "string" },
         top: { type: "string" },
         help: { type: "boolean", short: "h", default: false },
@@ -73,7 +74,7 @@ async function main(): Promise<void> {
   const showProgress = isTty && !values.json;
   const startedAt = Date.now();
 
-  const findings = await scan({
+  const { findings, errors } = await scan({
     root,
     maxDepth,
     onProgress: showProgress ? makeProgress() : undefined,
@@ -83,11 +84,19 @@ async function main(): Promise<void> {
   const elapsed = Date.now() - startedAt;
 
   if (values.json) {
-    console.log(JSON.stringify({ root, elapsedMs: elapsed, findings }, null, 2));
+    console.log(JSON.stringify({ root, elapsedMs: elapsed, findings, errorCount: errors.length, errors }, null, 2));
     return;
   }
 
   renderReport(findings, root, elapsed, top);
+  if (errors.length > 0) {
+    console.log(c.yellow(`  ${plural(errors.length, "path")} could not be read; totals may be incomplete.`));
+    if (values.verbose) {
+      for (const error of errors) console.log(`  ${prettyPath(error.path, root)} (${error.code})`);
+    } else {
+      console.log(c.gray("  Use --verbose to list unreadable paths and error codes."));
+    }
+  }
 }
 
 function renderReport(findings: Finding[], root: string, elapsed: number, top: number | undefined): void {
@@ -181,6 +190,7 @@ ${c.bold("OPTIONS")}
   --top <n>        Show only the n largest findings
   --depth <n>      Limit how deep to descend
   --json           Output machine-readable JSON
+  --verbose        List unreadable paths and error codes
   -h, --help       Show this help
   -v, --version    Show version
 
