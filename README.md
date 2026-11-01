@@ -140,6 +140,10 @@ Missing something? [Open an issue](https://github.com/EfeHasNoLuck/diskbroom/iss
 - [ ] Config file for custom rules and ignore paths
 - [ ] Package-manager cache cleanup (npm, pip, cargo, Gradle global caches)
 
+## Changelog
+
+Release notes for every version are in [CHANGELOG.md](./CHANGELOG.md).
+
 ## Contributing
 
 Issues and PRs are very welcome — especially new ecosystem rules. See
@@ -153,6 +157,17 @@ npm test
 npm run build
 node dist/cli.js --help
 ```
+
+### Releasing
+
+1. Move the `Unreleased` notes in [CHANGELOG.md](./CHANGELOG.md) under a new
+   version heading, and bump the version with
+   `npm version <x.y.z> --no-git-tag-version`.
+2. Merge that, then push a matching tag: `git tag v<x.y.z> && git push origin v<x.y.z>`.
+
+The [release workflow](./.github/workflows/release.yml) then runs the checks,
+publishes to npm with provenance through npm trusted publishing (no token in
+the repository), and creates the GitHub release from the changelog section.
 
 ## License
 

@@ -1,6 +1,6 @@
 {
   "name": "diskbroom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Find and reclaim gigabytes of regenerable build junk (node_modules, .venv, target, caches…) across all your projects — safely, on any OS.",
   "type": "module",
   "bin": {
