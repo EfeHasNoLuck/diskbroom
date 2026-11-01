@@ -26,6 +26,6 @@
     <text x="28" y="334"><tspan>  </tspan><tspan font-weight="bold">3.6 GB</tspan><tspan> </tspan><tspan fill="#3fb950">reclaimable</tspan><tspan fill="#8b949e"> across 5 high-confidence folders</tspan></text>
     <text x="28" y="356"><tspan>  </tspan><tspan font-weight="bold">41 MB</tspan><tspan> </tspan><tspan fill="#d29922">more</tspan><tspan fill="#8b949e"> in 1 medium-confidence folder — review before removing</tspan></text>
 
-    <text x="28" y="400" fill="#8b949e">  scanned in 2.3s · diskbroom only reports today; it never deletes anything.</text>
+    <text x="28" y="400" fill="#8b949e">  scanned in 2.3s · nothing was deleted — use -i to pick folders to remove</text>
   </g>
 </svg>

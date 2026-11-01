@@ -1,0 +1,164 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { access, mkdir, mkdtemp, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { checkRemovable, removeArtifact, scan, type Finding } from "../src/scanner.js";
+
+let root: string;
+
+/** Create files (and their parent folders) under `base`. */
+async function makeFiles(base: string, files: Record<string, string>): Promise<void> {
+  for (const [rel, content] of Object.entries(files)) {
+    const full = join(base, rel);
+    await mkdir(dirname(full), { recursive: true });
+    await writeFile(full, content);
+  }
+}
+
+/** Directory symlink that also works unprivileged on Windows (as a junction). */
+async function linkDir(target: string, path: string): Promise<void> {
+  await symlink(target, path, "junction");
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findOne(scanRoot: string, name: string): Promise<Finding> {
+  const finding = (await scan({ root: scanRoot })).find((f) => f.name === name);
+  if (!finding) throw new Error(`fixture problem: no ${name} found under ${scanRoot}`);
+  return finding;
+}
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "diskbroom-remove-"));
+  await makeFiles(root, {
+    "webapp/package.json": "{}",
+    "webapp/app.js": "console.log(1)",
+    "webapp/node_modules/left-pad/index.js": "x".repeat(1000),
+    "rustapp/Cargo.toml": "[package]",
+    "rustapp/target/debug/app": "y".repeat(500),
+    "precious/keep.txt": "do not delete me",
+  });
+});
+
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+});
+
+describe("removeArtifact", () => {
+  it("deletes the artifact folder and leaves the project's own files alone", async () => {
+    const nm = await findOne(root, "node_modules");
+    expect(await checkRemovable(nm, root)).toBeUndefined();
+
+    const result = await removeArtifact(nm, root);
+
+    expect(result.status).toBe("removed");
+    expect(await exists(nm.path)).toBe(false);
+    expect(await exists(join(root, "webapp", "package.json"))).toBe(true);
+    expect(await exists(join(root, "webapp", "app.js"))).toBe(true);
+    expect(await exists(join(root, "rustapp", "target"))).toBe(true);
+  });
+
+  it("removes symlinks inside the artifact without following them", async () => {
+    await linkDir(join(root, "precious"), join(root, "webapp", "node_modules", "linked"));
+    const nm = await findOne(root, "node_modules");
+
+    const result = await removeArtifact(nm, root);
+
+    expect(result.status).toBe("removed");
+    expect(await exists(nm.path)).toBe(false);
+    expect(await exists(join(root, "precious", "keep.txt"))).toBe(true);
+  });
+
+  it("refuses when the artifact was replaced by a symlink after the scan", async () => {
+    const nm = await findOne(root, "node_modules");
+    await rm(nm.path, { recursive: true });
+    await linkDir(join(root, "precious"), nm.path);
+
+    const result = await removeArtifact(nm, root);
+
+    expect(result.status).toBe("skipped");
+    expect(result.reason).toMatch(/symlink/);
+    expect(await exists(join(root, "precious", "keep.txt"))).toBe(true);
+  });
+
+  it("refuses when a parent folder was swapped for a symlink after the scan", async () => {
+    const scanRoot = join(root, "workspace");
+    await makeFiles(scanRoot, { "app/package.json": "{}", "app/node_modules/x/index.js": "x" });
+    const nm = await findOne(scanRoot, "node_modules");
+
+    // Move the real project out of the scanned tree and leave a link in its place.
+    const elsewhere = join(root, "elsewhere");
+    await rename(join(scanRoot, "app"), elsewhere);
+    await linkDir(elsewhere, join(scanRoot, "app"));
+
+    const result = await removeArtifact(nm, scanRoot);
+
+    expect(result.status).toBe("skipped");
+    expect(result.reason).toMatch(/through a symlink/);
+    expect(await exists(join(elsewhere, "node_modules", "x", "index.js"))).toBe(true);
+  });
+
+  it("never deletes anything inside a protected system folder", async () => {
+    const scanRoot = join(root, "Program Files", "tool");
+    await makeFiles(scanRoot, { "package.json": "{}", "node_modules/dep/index.js": "x" });
+    const nm = await findOne(scanRoot, "node_modules");
+
+    const result = await removeArtifact(nm, scanRoot);
+
+    expect(result.status).toBe("skipped");
+    expect(result.reason).toMatch(/protected folder \(Program Files\)/);
+    expect(await exists(nm.path)).toBe(true);
+  });
+
+  it("refuses paths that are outside the scanned root, or the root itself", async () => {
+    const nm = await findOne(root, "node_modules");
+
+    const outside = await removeArtifact(nm, join(root, "rustapp"));
+    const itself = await removeArtifact({ ...nm, path: root }, root);
+
+    expect(outside).toMatchObject({ status: "skipped", reason: "outside the scanned folder" });
+    expect(itself).toMatchObject({ status: "skipped", reason: "outside the scanned folder" });
+    expect(await exists(nm.path)).toBe(true);
+  });
+
+  it("refuses when the folder no longer matches its rule", async () => {
+    const target = await findOne(root, "target");
+    await rm(join(root, "rustapp", "Cargo.toml"));
+
+    const result = await removeArtifact(target, root);
+
+    expect(result.status).toBe("skipped");
+    expect(result.reason).toMatch(/no longer matches/);
+    expect(await exists(target.path)).toBe(true);
+  });
+
+  it("refuses a folder whose name is not a known artifact", async () => {
+    const fake: Finding = {
+      path: join(root, "precious"),
+      name: "precious",
+      ecosystem: "JavaScript",
+      confidence: "high",
+      size: 0,
+      regenerate: undefined,
+    };
+
+    const result = await removeArtifact(fake, root);
+
+    expect(result.status).toBe("skipped");
+    expect(await exists(join(root, "precious", "keep.txt"))).toBe(true);
+  });
+
+  it("skips a folder that disappeared after the scan", async () => {
+    const nm = await findOne(root, "node_modules");
+    await rm(nm.path, { recursive: true });
+
+    expect(await removeArtifact(nm, root)).toMatchObject({ status: "skipped", reason: "no longer exists" });
+  });
+});

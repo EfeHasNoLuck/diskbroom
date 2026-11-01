@@ -1,5 +1,5 @@
-import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, readdir, rm, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { RULES, type ArtifactRule, type Confidence } from "./patterns.js";
 
 export interface Finding {
@@ -26,7 +26,10 @@ export interface ScanOptions {
 const RULE_BY_NAME = new Map<string, ArtifactRule>();
 for (const rule of RULES) RULE_BY_NAME.set(rule.name.toLowerCase(), rule);
 
-/** Directories we never descend into (VCS internals, system, recycle bins). */
+/**
+ * Directories we never descend into (VCS internals, system, recycle bins), and
+ * never delete anything underneath.
+ */
 const SKIP_DIRS = new Set([
   ".git",
   ".hg",
@@ -181,4 +184,99 @@ async function sumSizes(files: string[], limit = 64): Promise<number> {
   const workerCount = Math.min(limit, files.length);
   const subtotals = await Promise.all(Array.from({ length: workerCount }, () => worker()));
   return subtotals.reduce((sum, value) => sum + value, 0);
+}
+
+export type RemovalStatus = "removed" | "skipped" | "failed";
+
+export interface RemovalResult {
+  finding: Finding;
+  status: RemovalStatus;
+  /** Why the folder was skipped or why removal failed. */
+  reason?: string;
+}
+
+/**
+ * Re-check, right before deletion, that a finding is still safe to remove.
+ * Returns `undefined` when it is, or a short human-readable reason when not.
+ *
+ * The scan may be minutes old by the time the user confirms, so nothing from
+ * it is trusted blindly. A folder is only removable when:
+ *  - it sits strictly inside the scanned `root`;
+ *  - no folder on its path is a protected system/VCS folder (see SKIP_DIRS);
+ *  - neither it nor any folder between it and `root` is a symlink or junction;
+ *  - it is still a directory that matches its artifact rule (e.g. `target`
+ *    still has a `Cargo.toml` next to it).
+ */
+export async function checkRemovable(finding: Finding, root: string): Promise<string | undefined> {
+  const absRoot = resolve(root);
+  const target = resolve(finding.path);
+  const rel = relative(absRoot, target);
+  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    return "outside the scanned folder";
+  }
+
+  const protectedDir = target
+    .split(sep)
+    .slice(0, -1)
+    .find((segment) => SKIP_DIRS.has(segment.toLowerCase()));
+  if (protectedDir !== undefined) return `inside a protected folder (${protectedDir})`;
+
+  // Walk from the root down to the target with lstat, so a folder swapped for
+  // a symlink after the scan can never redirect the delete somewhere else.
+  let current = absRoot;
+  for (const segment of rel.split(sep)) {
+    current = join(current, segment);
+    let info;
+    try {
+      info = await lstat(current);
+    } catch {
+      return "no longer exists";
+    }
+    if (info.isSymbolicLink()) {
+      return current === target ? "is now a symlink" : "its path now goes through a symlink";
+    }
+    if (!info.isDirectory()) return "is no longer a directory";
+  }
+
+  const rule = RULE_BY_NAME.get(basename(target).toLowerCase());
+  if (!rule) return "is not a known artifact folder";
+
+  let siblingNames: string[];
+  try {
+    siblingNames = await readdir(dirname(target));
+  } catch {
+    return "its parent folder is unreadable";
+  }
+  if (!(await ruleMatches(rule, siblingNames, target))) {
+    return "no longer matches its rule (project marker is gone)";
+  }
+  return undefined;
+}
+
+/**
+ * Permanently delete one artifact found by `scan`, after re-running every
+ * `checkRemovable` safety check. Symlinks and junctions met inside the folder
+ * are unlinked, never followed, so their targets are left untouched.
+ */
+export async function removeArtifact(finding: Finding, root: string): Promise<RemovalResult> {
+  const reason = await checkRemovable(finding, root);
+  if (reason !== undefined) return { finding, status: "skipped", reason };
+
+  try {
+    await rm(finding.path, { recursive: true, maxRetries: 3 });
+    return { finding, status: "removed" };
+  } catch (err) {
+    return { finding, status: "failed", reason: describeRemovalError(err) };
+  }
+}
+
+function describeRemovalError(err: unknown): string {
+  const code = (err as NodeJS.ErrnoException).code;
+  const detail =
+    code === "EACCES" || code === "EPERM"
+      ? "permission denied"
+      : code === "EBUSY"
+        ? "a file is in use"
+        : (err as Error).message;
+  return `${detail} (it may be partially removed)`;
 }

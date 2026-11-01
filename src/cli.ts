@@ -2,10 +2,12 @@
 import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { scan, type Finding } from "./scanner.js";
-import { c, colorForSize, humanSize, table } from "./format.js";
+import { c, colorForSize, humanSize, plural, prettyPath, table } from "./format.js";
+import { runInteractive, type Ask } from "./interactive.js";
 
 const VERSION = readVersion();
 
@@ -18,6 +20,8 @@ async function main(): Promise<void> {
         json: { type: "boolean", default: false },
         depth: { type: "string" },
         top: { type: "string" },
+        interactive: { type: "boolean", short: "i", default: false },
+        delete: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
         version: { type: "boolean", short: "v", default: false },
       },
@@ -37,6 +41,17 @@ async function main(): Promise<void> {
   }
   if (values.help) {
     printHelp();
+    return;
+  }
+
+  if (values.delete && !values.interactive) {
+    console.error(c.red("Error: --delete only works together with --interactive (-i), so you always pick what goes."));
+    process.exitCode = 1;
+    return;
+  }
+  if (values.interactive && values.json) {
+    console.error(c.red("Error: --interactive can't be combined with --json."));
+    process.exitCode = 1;
     return;
   }
 
@@ -87,10 +102,34 @@ async function main(): Promise<void> {
     return;
   }
 
-  renderReport(findings, root, elapsed, top);
+  const shown = top !== undefined && top > 0 ? findings.slice(0, top) : findings;
+  renderReport(findings, shown, root, elapsed, values.interactive);
+  if (!values.interactive || shown.length === 0) return;
+
+  const prompt = createPrompt();
+  try {
+    const result = await runInteractive({
+      findings: shown,
+      root,
+      delete: values.delete,
+      ask: prompt.ask,
+      print: (line = "") => console.log(line),
+    });
+    if (result.outcome === "invalid" || result.results.some((r) => r.status !== "removed")) {
+      process.exitCode = 1;
+    }
+  } finally {
+    prompt.close();
+  }
 }
 
-function renderReport(findings: Finding[], root: string, elapsed: number, top: number | undefined): void {
+function renderReport(
+  findings: Finding[],
+  shown: Finding[],
+  root: string,
+  elapsed: number,
+  numbered: boolean,
+): void {
   const seconds = (elapsed / 1000).toFixed(1);
 
   if (findings.length === 0) {
@@ -101,16 +140,18 @@ function renderReport(findings: Finding[], root: string, elapsed: number, top: n
   const high = findings.filter((f) => f.confidence === "high");
   const medium = findings.filter((f) => f.confidence === "medium");
 
-  const shown = top !== undefined && top > 0 ? findings.slice(0, top) : findings;
-  const rows = shown.map((f) => [
+  const rows = shown.map((f, i) => [
+    ...(numbered ? [c.cyan(String(i + 1).padStart(3))] : []),
     colorForSize(f.size, humanSize(f.size).padStart(9)),
     f.ecosystem,
     f.confidence === "high" ? c.green("high") : c.yellow("medium"),
     prettyPath(f.path, root),
   ]);
+  const headers = [...(numbered ? ["#"] : []), "SIZE", "ECOSYSTEM", "CONFIDENCE", "PATH"];
+  const aligns: Array<"left" | "right"> = [...(numbered ? ["right" as const] : []), "right", "left", "left", "left"];
 
   console.log();
-  console.log(table(["SIZE", "ECOSYSTEM", "CONFIDENCE", "PATH"], rows, ["right", "left", "left", "left"]));
+  console.log(table(headers, rows, aligns));
   if (shown.length < findings.length) {
     console.log(c.gray(`  … and ${findings.length - shown.length} more (drop --top to see all)`));
   }
@@ -127,7 +168,11 @@ function renderReport(findings: Finding[], root: string, elapsed: number, top: n
     );
   }
   console.log();
-  console.log(c.gray(`  scanned in ${seconds}s · diskbroom only reports today; it never deletes anything.`));
+  if (numbered) {
+    console.log(c.gray(`  scanned in ${seconds}s`));
+  } else {
+    console.log(c.gray(`  scanned in ${seconds}s · nothing was deleted — use -i to pick folders to remove`));
+  }
 }
 
 function ecosystemBreakdown(findings: Finding[]): string {
@@ -143,13 +188,39 @@ function sumSize(findings: Finding[]): number {
   return findings.reduce((acc, f) => acc + f.size, 0);
 }
 
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}
+/**
+ * Line-based prompt on stdin. Answers can also be piped in (one per line);
+ * end of input or Ctrl+C resolves to `null`, which always means "cancel".
+ */
+function createPrompt(): { ask: Ask; close: () => void } {
+  const terminal = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal });
+  // The async iterator buffers lines, so piped answers are never dropped.
+  const lines = rl[Symbol.asyncIterator]();
+  let closed = false;
+  rl.on("close", () => {
+    closed = true;
+  });
+  rl.on("SIGINT", () => rl.close()); // Ctrl+C at a prompt cancels instead of hanging
 
-function prettyPath(path: string, root: string): string {
-  const rel = relative(root, path);
-  return rel === "" ? path : rel;
+  const ask: Ask = async (question) => {
+    // Piped input closes the interface at EOF while answers may still be
+    // buffered in the iterator, so `closed` must not short-circuit here.
+    if (terminal && !closed) {
+      rl.setPrompt(question);
+      rl.prompt();
+    } else {
+      process.stdout.write(question);
+    }
+    const next = await lines.next();
+    if (next.done) {
+      process.stdout.write("\n");
+      return null;
+    }
+    if (!terminal) process.stdout.write(`${next.value}\n`); // echo piped answers so the log reads naturally
+    return next.value;
+  };
+  return { ask, close: () => rl.close() };
 }
 
 function makeProgress(): (dirsScanned: number, currentPath: string) => void {
@@ -175,21 +246,25 @@ ${c.bold("USAGE")}
   diskbroom [path] [options]
 
 ${c.bold("ARGUMENTS")}
-  path             Directory to scan (default: current directory)
+  path               Directory to scan (default: current directory)
 
 ${c.bold("OPTIONS")}
-  --top <n>        Show only the n largest findings
-  --depth <n>      Limit how deep to descend
-  --json           Output machine-readable JSON
-  -h, --help       Show this help
-  -v, --version    Show version
+  -i, --interactive  Pick folders from the results to remove (a dry run by default)
+  --delete           With -i: really delete the picked folders, after you type "yes"
+  --top <n>          Show only the n largest findings
+  --depth <n>        Limit how deep to descend
+  --json             Output machine-readable JSON
+  -h, --help         Show this help
+  -v, --version      Show version
 
 ${c.bold("EXAMPLES")}
-  ${c.cyan("diskbroom")}                    ${c.gray("# scan the current folder")}
-  ${c.cyan("diskbroom ~/code --top 20")}    ${c.gray("# 20 biggest artifacts under ~/code")}
-  ${c.cyan("diskbroom . --json")}           ${c.gray("# JSON output for scripts/CI")}
+  ${c.cyan("diskbroom")}                       ${c.gray("# scan the current folder")}
+  ${c.cyan("diskbroom ~/code --top 20")}       ${c.gray("# 20 biggest artifacts under ~/code")}
+  ${c.cyan("diskbroom . --json")}              ${c.gray("# JSON output for scripts/CI")}
+  ${c.cyan("diskbroom ~/code -i")}             ${c.gray("# pick folders, preview the space you'd free")}
+  ${c.cyan("diskbroom ~/code -i --delete")}    ${c.gray("# pick folders, confirm, delete them")}
 
-${c.gray("diskbroom only reports today — it never deletes anything.")}
+${c.gray('diskbroom never deletes anything unless you pass -i --delete and type "yes".')}
 `);
 }
 
