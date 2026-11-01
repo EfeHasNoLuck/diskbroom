@@ -4,7 +4,7 @@
 
 [![npm](https://img.shields.io/npm/v/diskbroom.svg)](https://www.npmjs.com/package/diskbroom)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 
 Every developer's disk is quietly bleeding space to `node_modules`, `.venv`,
 `target/`, `.gradle`, and a dozen build caches — all of it perfectly
@@ -54,6 +54,7 @@ diskbroom [path] [options]
 | `--top <n>` | Show only the *n* largest findings |
 | `--depth <n>` | Limit how deep to descend |
 | `--json` | Output machine-readable JSON |
+| `--verbose` | List unreadable paths and their filesystem error codes |
 | `-h, --help` | Show help |
 | `-v, --version` | Show version |
 
@@ -66,6 +67,12 @@ diskbroom . --json            # JSON output for scripts or CI
 diskbroom ~/code -i           # pick folders, preview the space you'd free (dry run)
 diskbroom ~/code -i --delete  # pick folders, confirm, then delete them
 ```
+
+If a directory cannot be listed or a file cannot be measured, the scan continues
+and warns that totals may be incomplete. Use `--verbose` for the affected paths
+and error codes (for example, `EACCES` or `ENOENT`). JSON output includes
+`errorCount` and an `errors` array of `{ path, code }` entries alongside `findings`.
+Each affected path is reported once, even if it was checked more than once.
 
 ### Interactive cleanup
 

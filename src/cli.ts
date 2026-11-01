@@ -5,7 +5,7 @@ import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { scan, type Finding } from "./scanner.js";
+import { scan, type Finding, type ScanError } from "./scanner.js";
 import { c, colorForSize, humanSize, plural, prettyPath, table } from "./format.js";
 import { runInteractive, type Ask } from "./interactive.js";
 
@@ -18,6 +18,7 @@ async function main(): Promise<void> {
       allowPositionals: true,
       options: {
         json: { type: "boolean", default: false },
+        verbose: { type: "boolean", default: false },
         depth: { type: "string" },
         top: { type: "string" },
         interactive: { type: "boolean", short: "i", default: false },
@@ -88,7 +89,7 @@ async function main(): Promise<void> {
   const showProgress = isTty && !values.json;
   const startedAt = Date.now();
 
-  const findings = await scan({
+  const { findings, errors } = await scan({
     root,
     maxDepth,
     onProgress: showProgress ? makeProgress() : undefined,
@@ -98,12 +99,14 @@ async function main(): Promise<void> {
   const elapsed = Date.now() - startedAt;
 
   if (values.json) {
-    console.log(JSON.stringify({ root, elapsedMs: elapsed, findings }, null, 2));
+    console.log(JSON.stringify({ root, elapsedMs: elapsed, findings, errorCount: errors.length, errors }, null, 2));
     return;
   }
 
   const shown = top !== undefined && top > 0 ? findings.slice(0, top) : findings;
   renderReport(findings, shown, root, elapsed, values.interactive);
+  // Before any prompt, so a picked total is never read as complete when it isn't.
+  reportErrors(errors, root, values.verbose);
   if (!values.interactive || shown.length === 0) return;
 
   const prompt = createPrompt();
@@ -172,6 +175,17 @@ function renderReport(
     console.log(c.gray(`  scanned in ${seconds}s`));
   } else {
     console.log(c.gray(`  scanned in ${seconds}s · nothing was deleted — use -i to pick folders to remove`));
+  }
+}
+
+/** Warn that totals may be incomplete; `--verbose` lists the paths and error codes. */
+function reportErrors(errors: ScanError[], root: string, verbose: boolean): void {
+  if (errors.length === 0) return;
+  console.log(c.yellow(`  ${plural(errors.length, "path")} could not be read; totals may be incomplete.`));
+  if (verbose) {
+    for (const error of errors) console.log(`  ${prettyPath(error.path, root)} (${error.code})`);
+  } else {
+    console.log(c.gray("  Use --verbose to list unreadable paths and error codes."));
   }
 }
 
@@ -254,6 +268,7 @@ ${c.bold("OPTIONS")}
   --top <n>          Show only the n largest findings
   --depth <n>        Limit how deep to descend
   --json             Output machine-readable JSON
+  --verbose          List unreadable paths and error codes
   -h, --help         Show this help
   -v, --version      Show version
 

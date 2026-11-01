@@ -80,7 +80,7 @@ describe("runInteractive", () => {
       await mkdir(dirname(join(root, rel)), { recursive: true });
       await writeFile(join(root, rel), content);
     }
-    findings = await scan({ root }); // largest first: node_modules, target, dist
+    findings = (await scan({ root })).findings; // largest first: node_modules, target, dist
     output = [];
   });
 

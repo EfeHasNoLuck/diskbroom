@@ -77,7 +77,7 @@ beforeAll(async () => {
     await mkdir(dirname(join(root, rel)), { recursive: true });
     await writeFile(join(root, rel), content);
   }
-  found = (await scan({ root }))
+  found = (await scan({ root })).findings
     .map((f) => relative(root, f.path).split(sep).join("/"))
     .sort();
 });
