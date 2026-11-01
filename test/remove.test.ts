@@ -1,10 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { spawnSync } from "node:child_process";
 import { access, mkdir, mkdtemp, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { checkRemovable, removeArtifact, scan, type Finding } from "../src/scanner.js";
 
 let root: string;
+
+// Run git as a clean child: a GIT_DIR inherited from, say, a hook would point it elsewhere.
+const GIT_ENV = { ...process.env };
+for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"]) delete GIT_ENV[key];
+const HAS_GIT = spawnSync("git", ["--version"], { env: GIT_ENV }).status === 0;
+
+function git(cwd: string, ...args: string[]): void {
+  const result = spawnSync("git", args, { cwd, env: GIT_ENV, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+}
 
 /** Create files (and their parent folders) under `base`. */
 async function makeFiles(base: string, files: Record<string, string>): Promise<void> {
@@ -105,16 +116,36 @@ describe("removeArtifact", () => {
     expect(await exists(join(elsewhere, "node_modules", "x", "index.js"))).toBe(true);
   });
 
-  it("never deletes anything inside a protected system folder", async () => {
-    const scanRoot = join(root, "Program Files", "tool");
-    await makeFiles(scanRoot, { "package.json": "{}", "node_modules/dep/index.js": "x" });
-    const nm = await findOne(scanRoot, "node_modules");
+  it.each(["Program Files", "site-packages", "dist-packages", ".cache", ".gradle", "node_modules"])(
+    "never deletes anything inside a protected folder (%s)",
+    async (protectedName) => {
+      const scanRoot = join(root, protectedName, "tool");
+      await makeFiles(scanRoot, { "package.json": "{}", "node_modules/dep/index.js": "x" });
+      const nm = await findOne(scanRoot, "node_modules");
 
-    const result = await removeArtifact(nm, scanRoot);
+      const result = await removeArtifact(nm, scanRoot);
 
-    expect(result.status).toBe("skipped");
-    expect(result.reason).toMatch(/protected folder \(Program Files\)/);
-    expect(await exists(nm.path)).toBe(true);
+      expect(result.status).toBe("skipped");
+      expect(result.reason).toBe(`inside a protected folder (${protectedName})`);
+      expect(await exists(nm.path)).toBe(true);
+    },
+  );
+
+  it.skipIf(!HAS_GIT)("refuses a folder that contains files tracked by git", async () => {
+    // A GitHub Action commits its bundled `dist/`; its node_modules is not committed.
+    const repo = join(root, "action");
+    await makeFiles(repo, { "package.json": "{}", "dist/index.js": "bundled", "node_modules/dep/index.js": "x" });
+    git(repo, "init", "-q");
+    git(repo, "add", "package.json", "dist/index.js");
+    const dist = await findOne(repo, "dist");
+    const nm = await findOne(repo, "node_modules");
+
+    expect(await removeArtifact(dist, repo)).toMatchObject({
+      status: "skipped",
+      reason: "contains files tracked by git",
+    });
+    expect(await exists(join(repo, "dist", "index.js"))).toBe(true);
+    expect((await removeArtifact(nm, repo)).status).toBe("removed");
   });
 
   it("refuses paths that are outside the scanned root, or the root itself", async () => {

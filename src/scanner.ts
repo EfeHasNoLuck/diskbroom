@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { lstat, readdir, rm, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { RULES, type ArtifactRule, type Confidence } from "./patterns.js";
@@ -27,13 +28,16 @@ const RULE_BY_NAME = new Map<string, ArtifactRule>();
 for (const rule of RULES) RULE_BY_NAME.set(rule.name.toLowerCase(), rule);
 
 /**
- * Directories we never descend into (VCS internals, system, recycle bins), and
- * never delete anything underneath.
+ * Directories we never descend into, and never delete anything underneath.
+ * A folder with one of these names is still reported when it matches a rule
+ * itself (a project's own `node_modules` or `.gradle`); it is never walked into.
  */
 const SKIP_DIRS = new Set([
+  // Version-control internals.
   ".git",
   ".hg",
   ".svn",
+  // Windows system folders and recycle bins.
   "$recycle.bin",
   "system volume information",
   "windows",
@@ -42,6 +46,14 @@ const SKIP_DIRS = new Set([
   "programdata",
   "$windows.~bt",
   "$windows.~ws",
+  // Installed-package trees and tool caches. They're never a user's project,
+  // and anything artifact-shaped inside belongs to an installed package (npm's
+  // bundled dependencies, the `dist/` pyright ships) or to a cache.
+  "node_modules",
+  "site-packages",
+  "dist-packages",
+  ".cache",
+  ".gradle",
 ]);
 
 /**
@@ -205,7 +217,9 @@ export interface RemovalResult {
  *  - no folder on its path is a protected system/VCS folder (see SKIP_DIRS);
  *  - neither it nor any folder between it and `root` is a symlink or junction;
  *  - it is still a directory that matches its artifact rule (e.g. `target`
- *    still has a `Cargo.toml` next to it).
+ *    still has a `Cargo.toml` next to it);
+ *  - git, when available, tracks no files inside it, so committed output such
+ *    as a GitHub Action's `dist/` is never deleted.
  */
 export async function checkRemovable(finding: Finding, root: string): Promise<string | undefined> {
   const absRoot = resolve(root);
@@ -250,7 +264,52 @@ export async function checkRemovable(finding: Finding, root: string): Promise<st
   if (!(await ruleMatches(rule, siblingNames, target))) {
     return "no longer matches its rule (project marker is gone)";
   }
+
+  // Last, because it starts a process.
+  if (await containsTrackedFiles(target)) return "contains files tracked by git";
   return undefined;
+}
+
+/** Give up on git after this long and treat the folder as untracked. */
+const GIT_TIMEOUT_MS = 10_000;
+
+/**
+ * Does git track any file inside `dir`? Only `true` when git positively lists
+ * one. Not being in a repository, or git being missing or failing, counts as
+ * `false`: this guard is best-effort, and every other check still applies.
+ */
+function containsTrackedFiles(dir: string): Promise<boolean> {
+  return new Promise((resolvePromise) => {
+    const env = { ...process.env };
+    // These would point git at some other repository than the one `dir` is in.
+    for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"]) delete env[key];
+
+    let found = false;
+    let child: ChildProcess;
+    try {
+      child = spawn("git", ["ls-files", "-z", "--", "."], {
+        cwd: dir,
+        env,
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
+      });
+    } catch {
+      resolvePromise(false);
+      return;
+    }
+
+    const timer = setTimeout(() => child.kill(), GIT_TIMEOUT_MS);
+    const finish = (): void => {
+      clearTimeout(timer);
+      resolvePromise(found);
+    };
+    child.stdout?.on("data", () => {
+      found = true;
+      child.kill(); // one tracked file is enough
+    });
+    child.on("error", finish);
+    child.on("close", finish);
+  });
 }
 
 /**

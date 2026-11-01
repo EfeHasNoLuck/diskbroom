@@ -89,7 +89,8 @@ export async function runInteractive(options: InteractiveOptions): Promise<Inter
   const selected = selection.indices.flatMap((i) => findings[i] ?? []);
 
   // ── 2. Preview, with every safety check run up front ─────────────────────
-  const problems = await Promise.all(selected.map((f) => checkRemovable(f, root)));
+  // Bounded, because each check can start a `git` process.
+  const problems = await mapLimit(selected, 8, (f) => checkRemovable(f, root));
   const removable = selected.filter((_, i) => problems[i] === undefined);
   const removableSize = sumSize(removable);
   const mediumCount = removable.filter((f) => f.confidence === "medium").length;
@@ -189,6 +190,20 @@ function describeResult(result: RemovalResult, root: string): string {
     case "failed":
       return `${c.red("✗ failed ")}  ${path} ${c.gray(`— ${result.reason ?? "unknown error"}`)}`;
   }
+}
+
+/** `Promise.all(items.map(fn))` with at most `limit` calls in flight. */
+async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 function sumSize(findings: readonly Finding[]): number {

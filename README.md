@@ -22,7 +22,7 @@ Most tools only know about `node_modules` and lean Unix-only. diskbroom is:
 
 - **Cross-ecosystem** — JavaScript, Python, Rust, Java/Gradle, .NET, Terraform, and more in one pass.
 - **First-class on Windows** — built and tested on Windows, macOS, and Linux.
-- **Safe by design** — never follows symlinks, never descends into system folders, and **never deletes anything unless you explicitly ask**. By default it only reports; deleting needs `--interactive --delete`, your own selection, and a typed `yes`.
+- **Safe by design** — never follows symlinks, never descends into system folders, installed packages or tool caches, and **never deletes anything unless you explicitly ask**. By default it only reports; deleting needs `--interactive --delete`, your own selection, and a typed `yes`.
 - **Precise** — ambiguous names like `target/`, `dist/`, and `bin/` are only flagged when a real project marker (e.g. `Cargo.toml`, `package.json`, a `.csproj`) sits next to them, so your hand-written `build/` folder is left alone.
 - **Zero runtime dependencies** — small, fast, and nothing sketchy in your `node_modules` (ironic, we know).
 
@@ -93,21 +93,28 @@ With `-i`, diskbroom numbers the results and asks which ones you want gone:
 Right before each folder is deleted, diskbroom checks it again. It is skipped
 (and reported) if it is no longer inside the scanned path, if it or any folder
 above it has turned into a symlink or junction, if it sits inside a protected
-system or VCS folder, or if it no longer matches its rule (say, the
-`Cargo.toml` next to `target/` is gone). Symlinks *inside* a deleted folder are
-removed as links; whatever they point to is never touched.
+system, VCS or installed-package folder, if it no longer matches its rule
+(say, the `Cargo.toml` next to `target/` is gone), or if git tracks files inside
+it (like a GitHub Action's committed `dist/`; checked whenever git is
+installed). Symlinks *inside* a deleted folder are removed as links; whatever
+they point to is never touched.
 
 ## What it detects
 
 | Ecosystem | Folders |
 | --- | --- |
-| JavaScript | `node_modules`, `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.parcel-cache`, `.angular`, `coverage` |
+| JavaScript | `node_modules` and `coverage` (next to a `package.json` or `deno.json`), `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.parcel-cache`, `.angular` |
 | Python | `.venv`, `venv`, `__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.tox` |
 | Rust | `target` (next to a `Cargo.toml`) |
-| Java / Gradle | `.gradle` |
+| Java / Gradle | `.gradle` (next to a Gradle build or settings file) |
 | .NET | `bin`, `obj` (next to a project/solution file) |
 | Build output | `dist`, `build` (next to a project manifest) |
 | Terraform | `.terraform` |
+
+diskbroom never looks inside installed-package or cache folders
+(`site-packages`, Node's global `lib/node_modules`, `~/.cache`, the Gradle user
+home `~/.gradle`): anything in there belongs to an installed tool, not to your
+projects, and reinstalling dependencies won't bring it back.
 
 Missing something? [Open an issue](https://github.com/EfeHasNoLuck/diskbroom/issues) — the catalogue is easy to extend in [`src/patterns.ts`](./src/patterns.ts).
 
