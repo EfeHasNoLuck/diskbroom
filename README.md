@@ -43,12 +43,12 @@ npm install -g diskbroom
 ## Usage
 
 ```bash
-diskbroom [path] [options]
+diskbroom [path...] [options]
 ```
 
 | Option | Description |
 | --- | --- |
-| `path` | Directory to scan (default: current directory) |
+| `path...` | One or more directories to scan (default: current directory) |
 | `-i, --interactive` | Pick folders from the results to remove — a dry run unless `--delete` is also given |
 | `--delete` | With `-i`: really delete the picked folders, after you type `yes` to confirm |
 | `--top <n>` | Show only the *n* largest findings |
@@ -63,6 +63,7 @@ diskbroom [path] [options]
 ```bash
 diskbroom                     # scan the current folder
 diskbroom ~/code --top 20     # 20 biggest artifacts under ~/code
+diskbroom ~/code ~/work       # scan several folders in one go
 diskbroom . --json            # JSON output for scripts or CI
 diskbroom ~/code -i           # pick folders, preview the space you'd free (dry run)
 diskbroom ~/code -i --delete  # pick folders, confirm, then delete them

@@ -1,6 +1,6 @@
 // Tiny, dependency-free ANSI colouring + table helpers.
 
-import { relative } from "node:path";
+import { relative, sep } from "node:path";
 
 const useColor =
   Boolean(process.stdout.isTTY) &&
@@ -85,8 +85,32 @@ export function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-/** Show `path` relative to the scan root, falling back to the full path. */
-export function prettyPath(path: string, root: string): string {
+/** Show `path` relative to `root`, falling back to the full path. */
+export function prettyPath(path: string, root: string | undefined): string {
+  if (root === undefined) return path;
   const rel = relative(root, path);
   return rel === "" ? path : rel;
+}
+
+/**
+ * The deepest folder that contains every one of `paths` (absolute, resolved),
+ * or `undefined` when they share none, e.g. paths on different Windows drives.
+ */
+export function commonAncestor(paths: readonly string[]): string | undefined {
+  const [first, ...rest] = paths;
+  if (first === undefined) return undefined;
+  if (rest.length === 0) return first;
+
+  let common = first.split(sep);
+  for (const path of rest) {
+    const parts = path.split(sep);
+    let i = 0;
+    while (i < common.length && i < parts.length && common[i] === parts[i]) i++;
+    common = common.slice(0, i);
+  }
+
+  if (common.length === 0) return undefined;
+  if (common.every((part) => part === "")) return common.length === 1 ? sep : undefined; // "/" or a bare UNC prefix
+  const joined = common.join(sep);
+  return /^[A-Za-z]:$/.test(joined) ? joined + sep : joined; // "C:" alone would mean C:'s current folder
 }

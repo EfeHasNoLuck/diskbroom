@@ -56,8 +56,11 @@ export function parseSelection(answer: string, findings: readonly Finding[]): Se
 export interface InteractiveOptions {
   /** Findings in the order they were shown; the user picks them by 1-based position. */
   findings: Finding[];
-  /** The scanned root. Nothing outside it is ever deleted. */
-  root: string;
+  /**
+   * Folder that paths are shown relative to (absolute paths when undefined).
+   * Only for display: each finding is checked against its own scan root.
+   */
+  displayRoot: string | undefined;
   /** Really delete (after typed confirmation). When false this is a dry run. */
   delete: boolean;
   ask: Ask;
@@ -73,7 +76,7 @@ export interface InteractiveResult {
 
 /** Let the user pick findings, then preview (dry run) or delete them. */
 export async function runInteractive(options: InteractiveOptions): Promise<InteractiveResult> {
-  const { findings, root, ask, print } = options;
+  const { findings, displayRoot, ask, print } = options;
   const nothingDeleted = (outcome: "cancelled" | "invalid", message: string): InteractiveResult => {
     print(c.gray(`  ${message} Nothing was deleted.`));
     return { outcome, selected: [], results: [] };
@@ -90,7 +93,7 @@ export async function runInteractive(options: InteractiveOptions): Promise<Inter
 
   // ── 2. Preview, with every safety check run up front ─────────────────────
   // Bounded, because each check can start a `git` process.
-  const problems = await mapLimit(selected, 8, (f) => checkRemovable(f, root));
+  const problems = await mapLimit(selected, 8, (f) => checkRemovable(f));
   const removable = selected.filter((_, i) => problems[i] === undefined);
   const removableSize = sumSize(removable);
   const mediumCount = removable.filter((f) => f.confidence === "medium").length;
@@ -105,7 +108,7 @@ export async function runInteractive(options: InteractiveOptions): Promise<Inter
         : f.confidence === "medium"
           ? c.yellow("medium confidence")
           : "";
-    return [colorForSize(f.size, humanSize(f.size).padStart(9)), prettyPath(f.path, root), note];
+    return [colorForSize(f.size, humanSize(f.size).padStart(9)), prettyPath(f.path, displayRoot), note];
   });
   const hasNotes = rows.some((row) => row[2] !== "");
   print(
@@ -148,9 +151,9 @@ export async function runInteractive(options: InteractiveOptions): Promise<Inter
   for (const [i, finding] of selected.entries()) {
     const problem = problems[i];
     const result: RemovalResult =
-      problem !== undefined ? { finding, status: "skipped", reason: problem } : await removeArtifact(finding, root);
+      problem !== undefined ? { finding, status: "skipped", reason: problem } : await removeArtifact(finding);
     results.push(result);
-    print(`  ${describeResult(result, root)}`);
+    print(`  ${describeResult(result, displayRoot)}`);
   }
 
   const removed = results.filter((r) => r.status === "removed");
@@ -180,8 +183,8 @@ async function askForSelection(
   return undefined;
 }
 
-function describeResult(result: RemovalResult, root: string): string {
-  const path = prettyPath(result.finding.path, root);
+function describeResult(result: RemovalResult, displayRoot: string | undefined): string {
+  const path = prettyPath(result.finding.path, displayRoot);
   switch (result.status) {
     case "removed":
       return `${c.green("✓ removed")}  ${path} ${c.gray(`(${humanSize(result.finding.size)})`)}`;
