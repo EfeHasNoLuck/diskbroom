@@ -26,6 +26,26 @@ const FILES: Record<string, string> = {
   // The Gradle *user home*: settings and credentials, not a build cache.
   "home/.gradle/gradle.properties": "signing.password=secret",
   "home/.gradle/caches/modules-2/files-2.1/lib.jar": "x",
+  // A macOS app bundle: Electron apps ship their code, with its own
+  // node_modules, inside Contents/Resources/app.
+  "Applications/Visual Studio Code.app/Contents/Info.plist": "<plist/>",
+  "Applications/Visual Studio Code.app/Contents/Resources/app/package.json": "{}",
+  "Applications/Visual Studio Code.app/Contents/Resources/app/node_modules/x/index.js": "x",
+  // VS Code installed on Linux: Chromium's runtime files next to resources/app,
+  // whose built-in extensions ship their compiled dist/.
+  "usr/share/code/icudtl.dat": "x",
+  "usr/share/code/resources.pak": "x",
+  "usr/share/code/resources/app/package.json": "{}",
+  "usr/share/code/resources/app/node_modules/x/index.js": "x",
+  "usr/share/code/resources/app/extensions/typescript-language-features/package.json": "{}",
+  "usr/share/code/resources/app/extensions/typescript-language-features/dist/extension.js": "x",
+  // Editor extensions ship node_modules and dist/ too, locally and on remote hosts.
+  "home/.vscode/extensions/dbaeumer.vscode-eslint-3.0.10/package.json": "{}",
+  "home/.vscode/extensions/dbaeumer.vscode-eslint-3.0.10/node_modules/x/index.js": "x",
+  "home/.vscode-server/extensions/esbenp.prettier-vscode-11.0.0/package.json": "{}",
+  "home/.vscode-server/extensions/esbenp.prettier-vscode-11.0.0/dist/extension.js": "x",
+  "home/.cursor/extensions/some.extension-1.0.0/package.json": "{}",
+  "home/.cursor/extensions/some.extension-1.0.0/node_modules/x/index.js": "x",
   // Hand-written source that merely shares an artifact's name: the rbs gem's
   // type signatures for Ruby's `coverage` module, and plain notes.
   "opt/ruby/lib/ruby/gems/3.3.0/gems/rbs-3.4.0/stdlib/coverage/0/coverage.rbs": "module Coverage end",
@@ -39,6 +59,12 @@ const FILES: Record<string, string> = {
   "home/code/denoapp/node_modules/dep/index.js": "x",
   "home/code/android/settings.gradle.kts": "",
   "home/code/android/.gradle/8.14/fileHashes.bin": "x",
+  // ...including ones that only look like installed apps: a project named like
+  // a bundle, and a Java project's frontend in src/main/resources/app.
+  "home/code/todo.app/package.json": "{}",
+  "home/code/todo.app/node_modules/dep/index.js": "x",
+  "home/code/spring/src/main/resources/app/package.json": "{}",
+  "home/code/spring/src/main/resources/app/node_modules/dep/index.js": "x",
 };
 
 let root: string;
@@ -65,9 +91,24 @@ describe("scan ignores folders that belong to installed tools", () => {
     expect(found).toEqual([
       "home/code/android/.gradle",
       "home/code/denoapp/node_modules",
+      "home/code/spring/src/main/resources/app/node_modules",
+      "home/code/todo.app/node_modules",
       "home/code/webapp/coverage",
       "home/code/webapp/node_modules",
     ]);
+  });
+
+  it("skips app bundles and Electron apps' packaged code", () => {
+    expect(found.filter((p) => p.startsWith("Applications/") || p.startsWith("usr/share/code/"))).toEqual([]);
+  });
+
+  it("skips editor extensions, locally and on remote hosts", () => {
+    expect(found.filter((p) => /\.vscode|\.cursor/.test(p))).toEqual([]);
+  });
+
+  it("still scans projects that only look like installed apps", () => {
+    expect(found).toContain("home/code/todo.app/node_modules");
+    expect(found).toContain("home/code/spring/src/main/resources/app/node_modules");
   });
 
   it("skips Node's global install and npm's bundled dependencies", () => {

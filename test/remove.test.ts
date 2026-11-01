@@ -116,7 +116,22 @@ describe("removeArtifact", () => {
     expect(await exists(join(elsewhere, "node_modules", "x", "index.js"))).toBe(true);
   });
 
-  it.each(["Program Files", "site-packages", "dist-packages", ".cache", ".gradle", "node_modules"])(
+  it.each([
+    ["a macOS app bundle", "Foo.app/Contents/Resources/app", { "Foo.app/Contents/Info.plist": "<plist/>" }, "Foo.app"],
+    ["an Electron app", "foo/resources/app", { "foo/icudtl.dat": "x" }, "foo"],
+  ])("never deletes anything inside %s, even when the scan starts there", async (_kind, inner, marker, label) => {
+    await makeFiles(root, marker);
+    const scanRoot = join(root, inner);
+    await makeFiles(scanRoot, { "package.json": "{}", "node_modules/dep/index.js": "x" });
+    const nm = await findOne(scanRoot, "node_modules");
+
+    const result = await removeArtifact(nm, scanRoot);
+
+    expect(result).toMatchObject({ status: "skipped", reason: `part of an installed app (${label})` });
+    expect(await exists(nm.path)).toBe(true);
+  });
+
+  it.each(["Program Files", "site-packages", "dist-packages", ".cache", ".gradle", "node_modules", ".vscode"])(
     "never deletes anything inside a protected folder (%s)",
     async (protectedName) => {
       const scanRoot = join(root, protectedName, "tool");

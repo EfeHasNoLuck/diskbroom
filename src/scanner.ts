@@ -54,12 +54,68 @@ const SKIP_DIRS = new Set([
   "dist-packages",
   ".cache",
   ".gradle",
+  // Editor extension and remote-server installs (`~/.vscode/extensions`, …).
+  // Extensions ship their own `node_modules` and `dist/` that no project
+  // command regenerates. A project's own `.vscode` only holds settings.
+  ".vscode",
+  ".vscode-insiders",
+  ".vscode-oss",
+  ".vscode-server",
+  ".vscode-server-insiders",
+  ".cursor",
+  ".cursor-server",
+  ".windsurf",
+  ".windsurf-server",
 ]);
+
+/** Chromium runtime files that sit next to an installed Electron app's `resources` folder. */
+const CHROMIUM_FILES = ["resources.pak", "icudtl.dat", "chrome_100_percent.pak", "v8_context_snapshot.bin"];
+
+/**
+ * If `dir` holds installed software rather than a project, return its name:
+ *  - a macOS app bundle (`Visual Studio Code.app`, with `Contents/Info.plist`);
+ *  - an Electron app's packaged code (`resources/app` or
+ *    `resources/app.asar.unpacked` next to Chromium's runtime files), such as
+ *    `/usr/share/code/resources/app` or `AppData\Local\Programs\<App>\resources\app`.
+ * It only touches the disk when the folder names match, so it is cheap to call
+ * for every directory. A project merely named `todo.app`, or a Java project's
+ * `src/main/resources/app`, doesn't qualify.
+ */
+async function installedApp(dir: string): Promise<string | undefined> {
+  const name = basename(dir);
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".app")) {
+    return (await isFile(join(dir, "Contents", "Info.plist"))) ? name : undefined;
+  }
+  if ((lower === "app" || lower === "app.asar.unpacked") && basename(dirname(dir)).toLowerCase() === "resources") {
+    const appRoot = dirname(dirname(dir));
+    return (await containsAnyOf(appRoot, CHROMIUM_FILES)) ? basename(appRoot) : undefined;
+  }
+  return undefined;
+}
+
+async function isFile(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function containsAnyOf(dir: string, names: string[]): Promise<boolean> {
+  try {
+    const present = new Set((await readdir(dir)).map((n) => n.toLowerCase()));
+    return names.some((n) => present.has(n));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Walk `root`, returning every regenerable artifact directory it finds. Never
- * follows symlinks, never descends into a matched artifact, and swallows
- * permission errors so one unreadable folder can't abort the whole scan.
+ * follows symlinks, never descends into a matched artifact, a SKIP_DIRS folder
+ * or installed software, and swallows permission errors so one unreadable
+ * folder can't abort the whole scan.
  */
 export async function scan(options: ScanOptions): Promise<Finding[]> {
   const { root, onProgress } = options;
@@ -107,6 +163,7 @@ export async function scan(options: ScanOptions): Promise<Finding[]> {
       }
 
       if (SKIP_DIRS.has(lower)) continue;
+      if ((await installedApp(full)) !== undefined) continue;
       if (depth < maxDepth) queue.push({ dir: full, depth: depth + 1 });
     }
   }
@@ -214,7 +271,8 @@ export interface RemovalResult {
  * The scan may be minutes old by the time the user confirms, so nothing from
  * it is trusted blindly. A folder is only removable when:
  *  - it sits strictly inside the scanned `root`;
- *  - no folder on its path is a protected system/VCS folder (see SKIP_DIRS);
+ *  - no folder on its path is a protected folder (see SKIP_DIRS) or installed
+ *    software such as an app bundle (see `installedApp`);
  *  - neither it nor any folder between it and `root` is a symlink or junction;
  *  - it is still a directory that matches its artifact rule (e.g. `target`
  *    still has a `Cargo.toml` next to it);
@@ -234,6 +292,12 @@ export async function checkRemovable(finding: Finding, root: string): Promise<st
     .slice(0, -1)
     .find((segment) => SKIP_DIRS.has(segment.toLowerCase()));
   if (protectedDir !== undefined) return `inside a protected folder (${protectedDir})`;
+
+  // Checked all the way up, so this holds even when the scan started inside an app.
+  for (let dir = dirname(target); dir !== dirname(dir); dir = dirname(dir)) {
+    const app = await installedApp(dir);
+    if (app !== undefined) return `part of an installed app (${app})`;
+  }
 
   // Walk from the root down to the target with lstat, so a folder swapped for
   // a symlink after the scan can never redirect the delete somewhere else.
