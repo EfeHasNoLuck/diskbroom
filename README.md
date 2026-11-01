@@ -16,15 +16,15 @@ you pick folders to delete.
   <img src="https://raw.githubusercontent.com/EfeHasNoLuck/diskbroom/main/.github/demo.svg" alt="diskbroom scanning ~/code and reporting 3.6 GB of reclaimable build artifacts across JavaScript, Rust, Python and Gradle projects" width="760">
 </p>
 
-## Why another cleaner?
+## Why diskbroom?
 
-Most tools only know about `node_modules` and lean Unix-only. diskbroom is:
+Good cleaners already exist: [npkill](https://github.com/voidcosmos/npkill) is great for `node_modules`, and [kondo](https://github.com/tbillington/kondo) covers many ecosystems. diskbroom's focus is being safe to point at a whole disk:
 
-- **Cross-ecosystem** — JavaScript, Python, Rust, Java/Gradle, .NET, Terraform, and more in one pass.
-- **First-class on Windows** — built and tested on Windows, macOS, and Linux.
-- **Safe by design** — never follows symlinks, never descends into system folders, installed software or tool caches, and **never deletes anything unless you explicitly ask**. By default it only reports; deleting needs `--interactive --delete`, your own selection, and a typed `yes`.
-- **Precise** — ambiguous names like `target/`, `dist/`, and `bin/` are only flagged when a real project marker (e.g. `Cargo.toml`, `package.json`, a `.csproj`) sits next to them, so your hand-written `build/` folder is left alone.
-- **Zero runtime dependencies** — small, fast, and nothing sketchy in your `node_modules` (ironic, we know).
+- **Report first, delete second** — read-only by default. Deleting needs `--interactive --delete`, your own selection and a typed `yes`, and every folder is re-checked right before it's removed: anything behind a symlink, inside a protected folder or installed software, or containing git-tracked files is refused.
+- **Knows what isn't yours** — never follows symlinks and never descends into version-control internals, Windows system folders, installed packages and apps, editor extensions or tool caches, so it won't offer up npm's own global install or a VS Code extension.
+- **Precise** — ambiguous names like `target/`, `dist/` and `bin/` only count when a project marker (e.g. `Cargo.toml`, `package.json`, a `.csproj`) sits next to them, and every finding carries a confidence level, so your hand-written `build/` folder is left alone.
+- **Nothing to install** — `npx diskbroom` runs anywhere Node does, with zero runtime dependencies (nothing sketchy in your `node_modules` — ironic, we know).
+- **Cross-ecosystem, cross-platform** — JavaScript, Python, Rust, Java/Gradle, .NET, Terraform and more in one pass, built and tested on Windows, macOS and Linux.
 
 ## Install
 
