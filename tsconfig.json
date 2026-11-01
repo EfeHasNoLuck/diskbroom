@@ -7,13 +7,11 @@
     "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "declaration": false,
-    "outDir": "dist",
-    "rootDir": "src",
+    "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }
