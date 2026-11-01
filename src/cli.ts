@@ -5,7 +5,7 @@ import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { scan, type Finding } from "./scanner.js";
+import { scan, type Finding, type ScanError } from "./scanner.js";
 import { c, colorForSize, commonAncestor, humanSize, plural, prettyPath, table } from "./format.js";
 import { runInteractive, type Ask } from "./interactive.js";
 
@@ -18,6 +18,7 @@ async function main(): Promise<void> {
       allowPositionals: true,
       options: {
         json: { type: "boolean", default: false },
+        verbose: { type: "boolean", default: false },
         depth: { type: "string" },
         top: { type: "string" },
         interactive: { type: "boolean", short: "i", default: false },
@@ -93,20 +94,24 @@ async function main(): Promise<void> {
 
   const onProgress = showProgress ? makeProgress() : undefined;
   const byPath = new Map<string, Finding>();
+  const errorsByPath = new Map<string, ScanError>();
   for (const root of roots) {
-    for (const finding of await scan({ root, maxDepth, onProgress })) {
-      // Overlapping paths (`~/code ~/code/app`) find the same folder twice; keep the first.
-      if (!byPath.has(finding.path)) byPath.set(finding.path, finding);
-    }
+    const result = await scan({ root, maxDepth, onProgress });
+    // Overlapping paths (`~/code ~/code/app`) meet the same folders twice; keep the first.
+    for (const finding of result.findings) if (!byPath.has(finding.path)) byPath.set(finding.path, finding);
+    for (const error of result.errors) if (!errorsByPath.has(error.path)) errorsByPath.set(error.path, error);
   }
   const findings = [...byPath.values()].sort((a, b) => b.size - a.size);
+  const errors = [...errorsByPath.values()];
 
   if (showProgress) clearLine();
   const elapsed = Date.now() - startedAt;
 
   if (values.json) {
     // `root` predates multiple paths; it stays (as the first one) for existing scripts.
-    console.log(JSON.stringify({ root: roots[0], roots, elapsedMs: elapsed, findings }, null, 2));
+    console.log(
+      JSON.stringify({ root: roots[0], roots, elapsedMs: elapsed, findings, errorCount: errors.length, errors }, null, 2),
+    );
     return;
   }
 
@@ -114,6 +119,8 @@ async function main(): Promise<void> {
   // Paths are shown relative to the folder all scanned paths share.
   const displayRoot = commonAncestor(roots);
   renderReport(findings, shown, roots, displayRoot, elapsed, values.interactive);
+  // Before any prompt, so a picked total is never read as complete when it isn't.
+  reportErrors(errors, displayRoot, values.verbose);
   if (!values.interactive || shown.length === 0) return;
 
   const prompt = createPrompt();
@@ -183,6 +190,17 @@ function renderReport(
     console.log(c.gray(`  scanned in ${seconds}s`));
   } else {
     console.log(c.gray(`  scanned in ${seconds}s · nothing was deleted — use -i to pick folders to remove`));
+  }
+}
+
+/** Warn that totals may be incomplete; `--verbose` lists the paths and error codes. */
+function reportErrors(errors: ScanError[], displayRoot: string | undefined, verbose: boolean): void {
+  if (errors.length === 0) return;
+  console.log(c.yellow(`  ${plural(errors.length, "path")} could not be read; totals may be incomplete.`));
+  if (verbose) {
+    for (const error of errors) console.log(`  ${prettyPath(error.path, displayRoot)} (${error.code})`);
+  } else {
+    console.log(c.gray("  Use --verbose to list unreadable paths and error codes."));
   }
 }
 
@@ -265,6 +283,7 @@ ${c.bold("OPTIONS")}
   --top <n>          Show only the n largest findings
   --depth <n>        Limit how deep to descend
   --json             Output machine-readable JSON
+  --verbose          List unreadable paths and error codes
   -h, --help         Show this help
   -v, --version      Show version
 

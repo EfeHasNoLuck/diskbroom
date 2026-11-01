@@ -80,7 +80,7 @@ describe("runInteractive", () => {
       await mkdir(dirname(join(root, rel)), { recursive: true });
       await writeFile(join(root, rel), content);
     }
-    findings = await scan({ root }); // largest first: node_modules, target, dist
+    findings = (await scan({ root })).findings; // largest first: node_modules, target, dist
     output = [];
   });
 
@@ -151,8 +151,8 @@ describe("runInteractive", () => {
 
   it("checks each finding against its own scan root, not the shared display folder", async () => {
     // Two scanned paths, plus a finding forged to claim a root it isn't inside.
-    const own = [...(await scan({ root: join(root, "big") })), ...(await scan({ root: join(root, "rust") }))];
-    const [dist] = await scan({ root: join(root, "site") });
+    const own = [...(await scan({ root: join(root, "big") })).findings, ...(await scan({ root: join(root, "rust") })).findings];
+    const [dist] = (await scan({ root: join(root, "site") })).findings;
     if (dist === undefined) throw new Error("fixture problem: no site/dist");
     const forged: Finding = { ...dist, root: join(root, "rust") };
     const { ask, asked } = scripted(["all", "yes"]);
