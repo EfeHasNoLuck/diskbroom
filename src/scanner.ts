@@ -6,6 +6,8 @@ import { RULES, type ArtifactRule, type Confidence } from "./patterns.js";
 export interface Finding {
   /** Absolute path to the artifact directory. */
   path: string;
+  /** The scan root it was found under. Deletion re-checks that it is still inside. */
+  root: string;
   /** Directory base name, e.g. "node_modules". */
   name: string;
   ecosystem: string;
@@ -153,6 +155,7 @@ export async function scan(options: ScanOptions): Promise<Finding[]> {
       if (rule && (await ruleMatches(rule, siblingNames, full))) {
         findings.push({
           path: full,
+          root,
           name: entry.name,
           ecosystem: rule.ecosystem,
           confidence: rule.confidence,
@@ -279,7 +282,7 @@ export interface RemovalResult {
  *  - git, when available, tracks no files inside it, so committed output such
  *    as a GitHub Action's `dist/` is never deleted.
  */
-export async function checkRemovable(finding: Finding, root: string): Promise<string | undefined> {
+export async function checkRemovable(finding: Finding, root: string = finding.root): Promise<string | undefined> {
   const absRoot = resolve(root);
   const target = resolve(finding.path);
   const rel = relative(absRoot, target);
@@ -381,7 +384,7 @@ function containsTrackedFiles(dir: string): Promise<boolean> {
  * `checkRemovable` safety check. Symlinks and junctions met inside the folder
  * are unlinked, never followed, so their targets are left untouched.
  */
-export async function removeArtifact(finding: Finding, root: string): Promise<RemovalResult> {
+export async function removeArtifact(finding: Finding, root: string = finding.root): Promise<RemovalResult> {
   const reason = await checkRemovable(finding, root);
   if (reason !== undefined) return { finding, status: "skipped", reason };
 

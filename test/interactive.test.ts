@@ -8,7 +8,7 @@ import { MAX_SELECTION_ATTEMPTS, parseSelection, runInteractive } from "../src/i
 const ANSI = /\x1b\[[0-9;]*m/g;
 
 function fakeFinding(confidence: Finding["confidence"], i: number): Finding {
-  return { path: `/p/${i}`, name: "node_modules", ecosystem: "JavaScript", confidence, size: 100 - i, regenerate: undefined };
+  return { path: `/p/${i}`, root: "/p", name: "node_modules", ecosystem: "JavaScript", confidence, size: 100 - i, regenerate: undefined };
 }
 
 describe("parseSelection", () => {
@@ -91,7 +91,7 @@ describe("runInteractive", () => {
   it("is a dry run by default: reports the space but deletes nothing", async () => {
     const { ask, asked } = scripted(["all"]);
 
-    const result = await runInteractive({ findings, root, delete: false, ask, print });
+    const result = await runInteractive({ findings, displayRoot: root, delete: false, ask, print });
 
     expect(result.outcome).toBe("dry-run");
     expect(result.selected).toHaveLength(3);
@@ -104,7 +104,7 @@ describe("runInteractive", () => {
   it("deletes only the picked folders after the user types yes", async () => {
     const { ask, asked } = scripted(["1,3", "yes"]);
 
-    const result = await runInteractive({ findings, root, delete: true, ask, print });
+    const result = await runInteractive({ findings, displayRoot: root, delete: true, ask, print });
 
     expect(result.outcome).toBe("deleted");
     expect(result.results.map((r) => r.status)).toEqual(["removed", "removed"]);
@@ -120,7 +120,7 @@ describe("runInteractive", () => {
   it.each([["y"], ["no"], [""], ["yes please"]])("cancels unless the confirmation is exactly yes (%j)", async (answer) => {
     const { ask } = scripted(["all", answer]);
 
-    const result = await runInteractive({ findings, root, delete: true, ask, print });
+    const result = await runInteractive({ findings, displayRoot: root, delete: true, ask, print });
 
     expect(result.outcome).toBe("cancelled");
     for (const f of findings) expect(await exists(f.path)).toBe(true);
@@ -128,8 +128,8 @@ describe("runInteractive", () => {
   });
 
   it("cancels when input ends, at either prompt", async () => {
-    const atSelection = await runInteractive({ findings, root, delete: true, ask: scripted([]).ask, print });
-    const atConfirm = await runInteractive({ findings, root, delete: true, ask: scripted(["1"]).ask, print });
+    const atSelection = await runInteractive({ findings, displayRoot: root, delete: true, ask: scripted([]).ask, print });
+    const atConfirm = await runInteractive({ findings, displayRoot: root, delete: true, ask: scripted(["1"]).ask, print });
 
     expect(atSelection.outcome).toBe("cancelled");
     expect(atConfirm.outcome).toBe("cancelled");
@@ -138,22 +138,40 @@ describe("runInteractive", () => {
 
   it("re-asks after an invalid selection, then gives up", async () => {
     const retry = scripted(["9", "2", "yes"]);
-    const ok = await runInteractive({ findings, root, delete: true, ask: retry.ask, print });
+    const ok = await runInteractive({ findings, displayRoot: root, delete: true, ask: retry.ask, print });
     expect(ok.outcome).toBe("deleted");
     expect(await exists(join(root, "rust", "target"))).toBe(false);
 
     const bad = scripted(Array.from({ length: 10 }, () => "nope"));
-    const gaveUp = await runInteractive({ findings, root, delete: true, ask: bad.ask, print });
+    const gaveUp = await runInteractive({ findings, displayRoot: root, delete: true, ask: bad.ask, print });
     expect(gaveUp.outcome).toBe("invalid");
     expect(bad.asked).toHaveLength(MAX_SELECTION_ATTEMPTS);
     expect(await exists(join(root, "big", "node_modules"))).toBe(true);
+  });
+
+  it("checks each finding against its own scan root, not the shared display folder", async () => {
+    // Two scanned paths, plus a finding forged to claim a root it isn't inside.
+    const own = [...(await scan({ root: join(root, "big") })), ...(await scan({ root: join(root, "rust") }))];
+    const [dist] = await scan({ root: join(root, "site") });
+    if (dist === undefined) throw new Error("fixture problem: no site/dist");
+    const forged: Finding = { ...dist, root: join(root, "rust") };
+    const { ask, asked } = scripted(["all", "yes"]);
+
+    const result = await runInteractive({ findings: [...own, forged], displayRoot: root, delete: true, ask, print });
+
+    // The preview already tells the truth, so the confirmation counts only what will go.
+    expect(text()).toMatch(/site.dist .*will be skipped: outside the scanned folder/);
+    expect(asked[1]).toMatch(/Permanently delete 2 folders/);
+    expect(result.results.map((r) => r.status)).toEqual(["removed", "removed", "skipped"]);
+    expect(result.results[2]?.reason).toBe("outside the scanned folder");
+    expect(await exists(join(root, "site", "dist"))).toBe(true);
   });
 
   it("previews unsafe picks as skipped and leaves them out of the confirmation", async () => {
     await rm(join(root, "rust", "Cargo.toml")); // `target` no longer qualifies
     const { ask, asked } = scripted(["1-2", "yes"]);
 
-    const result = await runInteractive({ findings, root, delete: true, ask, print });
+    const result = await runInteractive({ findings, displayRoot: root, delete: true, ask, print });
 
     expect(text()).toMatch(/rust.target .*will be skipped: no longer matches/);
     expect(asked[1]).toMatch(/Permanently delete 1 folder /);

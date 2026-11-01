@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { scan, type Finding } from "./scanner.js";
-import { c, colorForSize, humanSize, plural, prettyPath, table } from "./format.js";
+import { c, colorForSize, commonAncestor, humanSize, plural, prettyPath, table } from "./format.js";
 import { runInteractive, type Ask } from "./interactive.js";
 
 const VERSION = readVersion();
@@ -55,19 +55,22 @@ async function main(): Promise<void> {
     return;
   }
 
-  const root = resolve(positionals[0] ?? ".");
+  // Every path given (the current folder when none is), resolved and de-duplicated.
+  const roots = [...new Set((positionals.length > 0 ? positionals : ["."]).map((p) => resolve(p)))];
 
-  try {
-    const rootStat = await stat(root);
-    if (!rootStat.isDirectory()) {
-      console.error(c.red(`Error: not a directory: ${root}`));
+  for (const root of roots) {
+    try {
+      const rootStat = await stat(root);
+      if (!rootStat.isDirectory()) {
+        console.error(c.red(`Error: not a directory: ${root}`));
+        process.exitCode = 1;
+        return;
+      }
+    } catch {
+      console.error(c.red(`Error: path does not exist: ${root}`));
       process.exitCode = 1;
       return;
     }
-  } catch {
-    console.error(c.red(`Error: path does not exist: ${root}`));
-    process.exitCode = 1;
-    return;
   }
 
   const maxDepth = values.depth === undefined ? undefined : Number.parseInt(values.depth, 10);
@@ -88,29 +91,36 @@ async function main(): Promise<void> {
   const showProgress = isTty && !values.json;
   const startedAt = Date.now();
 
-  const findings = await scan({
-    root,
-    maxDepth,
-    onProgress: showProgress ? makeProgress() : undefined,
-  });
+  const onProgress = showProgress ? makeProgress() : undefined;
+  const byPath = new Map<string, Finding>();
+  for (const root of roots) {
+    for (const finding of await scan({ root, maxDepth, onProgress })) {
+      // Overlapping paths (`~/code ~/code/app`) find the same folder twice; keep the first.
+      if (!byPath.has(finding.path)) byPath.set(finding.path, finding);
+    }
+  }
+  const findings = [...byPath.values()].sort((a, b) => b.size - a.size);
 
   if (showProgress) clearLine();
   const elapsed = Date.now() - startedAt;
 
   if (values.json) {
-    console.log(JSON.stringify({ root, elapsedMs: elapsed, findings }, null, 2));
+    // `root` predates multiple paths; it stays (as the first one) for existing scripts.
+    console.log(JSON.stringify({ root: roots[0], roots, elapsedMs: elapsed, findings }, null, 2));
     return;
   }
 
   const shown = top !== undefined && top > 0 ? findings.slice(0, top) : findings;
-  renderReport(findings, shown, root, elapsed, values.interactive);
+  // Paths are shown relative to the folder all scanned paths share.
+  const displayRoot = commonAncestor(roots);
+  renderReport(findings, shown, roots, displayRoot, elapsed, values.interactive);
   if (!values.interactive || shown.length === 0) return;
 
   const prompt = createPrompt();
   try {
     const result = await runInteractive({
       findings: shown,
-      root,
+      displayRoot,
       delete: values.delete,
       ask: prompt.ask,
       print: (line = "") => console.log(line),
@@ -126,14 +136,15 @@ async function main(): Promise<void> {
 function renderReport(
   findings: Finding[],
   shown: Finding[],
-  root: string,
+  roots: string[],
+  displayRoot: string | undefined,
   elapsed: number,
   numbered: boolean,
 ): void {
   const seconds = (elapsed / 1000).toFixed(1);
 
   if (findings.length === 0) {
-    console.log(`${c.green("✓ No reclaimable build artifacts found.")} ${c.gray(`(scanned ${root} in ${seconds}s)`)}`);
+    console.log(`${c.green("✓ No reclaimable build artifacts found.")} ${c.gray(`(scanned ${roots.join(", ")} in ${seconds}s)`)}`);
     return;
   }
 
@@ -145,7 +156,7 @@ function renderReport(
     colorForSize(f.size, humanSize(f.size).padStart(9)),
     f.ecosystem,
     f.confidence === "high" ? c.green("high") : c.yellow("medium"),
-    prettyPath(f.path, root),
+    prettyPath(f.path, displayRoot),
   ]);
   const headers = [...(numbered ? ["#"] : []), "SIZE", "ECOSYSTEM", "CONFIDENCE", "PATH"];
   const aligns: Array<"left" | "right"> = [...(numbered ? ["right" as const] : []), "right", "left", "left", "left"];
@@ -243,10 +254,10 @@ function printHelp(): void {
 ${c.bold("diskbroom")} ${c.gray(`v${VERSION}`)} — find reclaimable build junk across your projects
 
 ${c.bold("USAGE")}
-  diskbroom [path] [options]
+  diskbroom [path...] [options]
 
 ${c.bold("ARGUMENTS")}
-  path               Directory to scan (default: current directory)
+  path...            One or more directories to scan (default: current directory)
 
 ${c.bold("OPTIONS")}
   -i, --interactive  Pick folders from the results to remove (a dry run by default)
@@ -260,6 +271,7 @@ ${c.bold("OPTIONS")}
 ${c.bold("EXAMPLES")}
   ${c.cyan("diskbroom")}                       ${c.gray("# scan the current folder")}
   ${c.cyan("diskbroom ~/code --top 20")}       ${c.gray("# 20 biggest artifacts under ~/code")}
+  ${c.cyan("diskbroom ~/code ~/work")}         ${c.gray("# scan several folders in one go")}
   ${c.cyan("diskbroom . --json")}              ${c.gray("# JSON output for scripts/CI")}
   ${c.cyan("diskbroom ~/code -i")}             ${c.gray("# pick folders, preview the space you'd free")}
   ${c.cyan("diskbroom ~/code -i --delete")}    ${c.gray("# pick folders, confirm, delete them")}

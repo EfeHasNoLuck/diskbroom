@@ -188,6 +188,7 @@ describe("removeArtifact", () => {
   it("refuses a folder whose name is not a known artifact", async () => {
     const fake: Finding = {
       path: join(root, "precious"),
+      root,
       name: "precious",
       ecosystem: "JavaScript",
       confidence: "high",

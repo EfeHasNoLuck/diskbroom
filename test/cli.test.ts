@@ -118,4 +118,40 @@ describe("cli", () => {
     expect(await exists(join(root, "web", "package.json"))).toBe(true);
     expect(await exists(target)).toBe(true); // not picked
   });
+
+  it("scans every path given", { timeout: TIMEOUT }, async () => {
+    const run = await runCli([join(root, "web"), join(root, "rs"), "--json"]);
+    const report = JSON.parse(run.stdout) as { root: string; roots: string[]; findings: Array<{ path: string }> };
+
+    expect(run.code).toBe(0);
+    expect(report.roots).toEqual([join(root, "web"), join(root, "rs")]);
+    expect(report.root).toBe(join(root, "web")); // kept for existing scripts
+    expect(report.findings.map((f) => f.path).sort()).toEqual([nodeModules, target].sort());
+  });
+
+  it("lists each folder once when paths overlap or repeat", { timeout: TIMEOUT }, async () => {
+    const run = await runCli([root, join(root, "web"), root, "--json"]);
+    const report = JSON.parse(run.stdout) as { roots: string[]; findings: Array<{ path: string }> };
+
+    expect(report.roots).toEqual([root, join(root, "web")]);
+    expect(report.findings.filter((f) => f.path === nodeModules)).toHaveLength(1);
+  });
+
+  it("rejects a missing path before scanning anything", { timeout: TIMEOUT }, async () => {
+    const missing = join(root, "nope");
+    const run = await runCli([root, missing, "--json"]);
+
+    expect(run.code).toBe(1);
+    expect(run.stderr).toContain(`path does not exist: ${missing}`);
+    expect(run.stdout).toBe("");
+  });
+
+  it("-i --delete works across several paths", { timeout: TIMEOUT }, async () => {
+    const run = await runCli([join(root, "web"), join(root, "rs"), "-i", "--delete"], "all\nyes\n");
+
+    expect(run.code).toBe(0);
+    expect(run.stdout).toMatch(/✓ removed\s+web.node_modules/); // relative to the shared parent
+    expect(await exists(nodeModules)).toBe(false);
+    expect(await exists(target)).toBe(false);
+  });
 });
